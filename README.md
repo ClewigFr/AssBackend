@@ -8,5 +8,5 @@
  - Spring https://spring.io/
  
 # Platform Cloud
- - Heroku https://www.heroku.com/
- -
+ - Heroku https://www.heroku.com/ (gratuit pour le dev, puis 7$/month pour beta)
+ - Scaleway https://www.scaleway.com/fr/instances-virtuelles/development/ (2,99€/month)
