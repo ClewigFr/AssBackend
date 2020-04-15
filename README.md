@@ -10,3 +10,4 @@
 # Platform Cloud
  - Heroku https://www.heroku.com/ (gratuit pour le dev, puis 7$/month pour beta)
  - Scaleway https://www.scaleway.com/fr/instances-virtuelles/development/ (2,99€/month)
+ - Ikoula https://www.ikoula.com/fr/cloud-public (2,99€/month)
