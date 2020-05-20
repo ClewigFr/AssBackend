@@ -1,5 +1,6 @@
 package com.ass
 
+import com.ass.routing.root
 import io.ktor.application.*
 import io.ktor.response.*
 import io.ktor.request.*
@@ -15,6 +16,9 @@ import io.ktor.features.*
 import io.ktor.gson.*
 import io.ktor.client.*
 import io.ktor.client.engine.jetty.*
+import org.jetbrains.exposed.sql.Database
+import org.jetbrains.exposed.sql.SchemaUtils.create
+import org.jetbrains.exposed.sql.transactions.transaction
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
 
@@ -50,29 +54,27 @@ fun Application.module(testing: Boolean = false) {
     val client = HttpClient(Jetty) {
     }
 
+    val port = Integer.valueOf(environment.config.property("ktor.deployment.port").getString())
+    val databaseUrl = environment.config.property("ktor.deployment.database_url").getString()
+
+    when {
+        isDev -> {
+            Database.connect(
+                databaseUrl,
+                driver = "org.h2.Driver"
+            )
+        }
+        isProd -> {
+            Database.connect(
+                databaseUrl, driver = "org.postgresql.Driver"
+            )
+        }
+    }
+    transaction {
+        // create(Cocktails)
+    }
     routing {
-        get("/") {
-            call.respondText("HELLO WORLD!", contentType = ContentType.Text.Plain)
-        }
-
-        get("/html-mustache") {
-            call.respond(MustacheContent("index.hbs", mapOf("user" to MustacheUser(1, "user1"))))
-        }
-
-        // Static feature. Try to access `/static/ktor_logo.svg`
-        static("/static") {
-            resources("static")
-        }
-
-        get("/session/increment") {
-            val session = call.sessions.get<MySession>() ?: MySession()
-            call.sessions.set(session.copy(count = session.count + 1))
-            call.respondText("Counter is ${session.count}. Refresh to increment.")
-        }
-
-        get("/json/gson") {
-            call.respond(mapOf("hello" to "world"))
-        }
+        root()
     }
 }
 
@@ -80,3 +82,6 @@ data class MustacheUser(val id: Int, val name: String)
 
 data class MySession(val count: Int = 0)
 
+val Application.envKind get() = environment.config.property("ktor.environment").getString()
+val Application.isDev get() = envKind == "dev"
+val Application.isProd get() = envKind != "dev"
