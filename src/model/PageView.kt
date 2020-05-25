@@ -21,5 +21,12 @@ data class PageViewsJson(
     var timestamp: Long
 )
 
+fun PageView.toPageViewsJson() = PageViewsJson(
+    page.id.value,
+    sessionId,
+    timestamp
+
+)
+
 
 data class PostPageViews(val pageViews: List<PageViewsJson>)
