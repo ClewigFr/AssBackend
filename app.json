@@ -1,0 +1,8 @@
+{
+  "name": "Ass",
+  "description": "Anonymous simple stats.",
+  "image": "heroku/java",
+  "addons": [
+    "heroku-postgresql"
+  ]
+}
