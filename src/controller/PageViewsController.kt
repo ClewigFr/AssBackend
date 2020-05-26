@@ -21,27 +21,48 @@ fun Routing.pageViews() {
             call.receive<PostPageViews>().run {
                 addPageViews(this)
             }.also {
-                call.respond(HttpStatusCode.Accepted)
+                call.respond(it)
             }
         }
     }
 }
 
 /**
- * Save Pageviews hits received in post request
+ * Save page views hits received in post request
  *
- * @param post the post request containing page views
+ * @param post the post request containing page view hits
+ *
+ * @return request HttpStatusCode
  */
-fun addPageViews(post: PostPageViews) {
+fun addPageViews(post: PostPageViews): HttpStatusCode {
+    var statusCode = HttpStatusCode.Continue
     post.pageViews.forEach { hit ->
         transaction {
-            Page.findById(hit.page)?.let {
+            val pageDb = Page.findById(hit.page)
+            if (pageDb != null) {
                 PageView.new {
-                    page = it
+                    page = pageDb
                     sessionId = hit.sessionId
                     timestamp = System.currentTimeMillis() - hit.timestamp
                 }
+                // Handle successfull request
+                statusCode = statusCode.handleAddPageViewsStatusCode(true)
+            } else {
+                // Handle page not found
+                statusCode = statusCode.handleAddPageViewsStatusCode(false)
             }
         }
     }
+    // Handle bad request
+    if (statusCode == HttpStatusCode.Continue) {
+        statusCode = statusCode.handleAddPageViewsStatusCode(false)
+    }
+    return statusCode
+}
+
+fun HttpStatusCode.handleAddPageViewsStatusCode(success: Boolean) = when (this) {
+    HttpStatusCode.Continue -> if (success) HttpStatusCode.OK else HttpStatusCode.BadRequest
+    HttpStatusCode.OK -> if (success) HttpStatusCode.OK else HttpStatusCode.PartialContent
+    HttpStatusCode.BadRequest -> if (success) HttpStatusCode.PartialContent else HttpStatusCode.BadRequest
+    else -> HttpStatusCode.PartialContent
 }
