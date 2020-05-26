@@ -28,5 +28,4 @@ fun PageView.toPageViewsJson() = PageViewsJson(
 
 )
 
-
 data class PostPageViews(val pageViews: List<PageViewsJson>)

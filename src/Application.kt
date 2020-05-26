@@ -2,10 +2,9 @@ package com.ass
 
 import com.ass.controller.pageViews
 import com.ass.controller.pages
+import com.ass.controller.stats
 import com.ass.dao.Pages
 import com.ass.dao.PagesViews
-import com.ass.dao.PagesViews.page
-import com.ass.model.Page
 import com.ass.routing.root
 import com.github.mustachejava.DefaultMustacheFactory
 import io.ktor.application.Application
@@ -26,7 +25,6 @@ import io.ktor.sessions.cookie
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils.create
 import org.jetbrains.exposed.sql.transactions.transaction
-import kotlin.collections.listOf
 import kotlin.collections.set
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
@@ -105,6 +103,7 @@ fun Application.routingInitialization() {
         root()
         pageViews()
         pages()
+        stats()
     }
 }
 

@@ -16,7 +16,22 @@ import org.jetbrains.exposed.sql.transactions.transaction
  * Page feature routes
  */
 fun Routing.pageViews() {
-    route("/pages") {
+    route("/views") {
+        // example :
+        // {
+        //    "pageViews": [
+        //        {
+        //            "page": "d9ced6a4-4151-4bd2-b9d9-457bf83d03a9",
+        //            "sessionId": "e6c8a676-b9b2-a108-b9b2-7b7871951ef6",
+        //            "timestamp": 1
+        //        },
+        //         {
+        //            "page": "d9ced6a4-4151-4bd2-b9d9-457bf83d03a9",
+        //            "sessionId": "e6c8a676-b9b2-a108-b9b2-7b7871951ef6",
+        //            "timestamp": 1
+        //        }
+        //    ]
+        //}
         post {
             call.receive<PostPageViews>().run {
                 addPageViews(this)

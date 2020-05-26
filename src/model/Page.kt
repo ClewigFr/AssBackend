@@ -11,3 +11,13 @@ class Page(id: EntityID<UUID>) : UUIDEntity(id) {
 
     var name by Pages.name
 }
+
+data class PageJson(
+    var id: UUID,
+    var name: String
+)
+
+fun Page.toPageJson() = PageJson(
+    id.value,
+    name
+)
