@@ -1,26 +1,29 @@
-/*
 package com.ass.controller
 
-import io.ktor.application.*
-import io.ktor.freemarker.*
-import io.ktor.http.*
-import io.ktor.locations.*
-import io.ktor.request.*
-import io.ktor.response.*
-import io.ktor.routing.*
-import io.ktor.samples.kweet.dao.*
-import io.ktor.samples.kweet.model.*
-import io.ktor.sessions.*
-import io.ktor.util.*
+import com.ass.ASSSession
+import com.ass.dao.createUser
+import com.ass.dao.fetchUser
+import com.ass.dao.userNameValid
+import com.ass.model.User
+import io.ktor.application.application
+import io.ktor.application.call
+import io.ktor.application.log
+import io.ktor.http.Parameters
+import io.ktor.request.receive
+import io.ktor.response.respond
+import io.ktor.routing.Route
+import io.ktor.routing.get
+import io.ktor.routing.post
+import io.ktor.routing.route
+import io.ktor.sessions.get
+import io.ktor.sessions.sessions
+import io.ktor.sessions.set
 
-*/
 /**
  * Register routes for user registration in the [Register] route (/register)
- *//*
-
-fun Route.register(dao: DAOFacade, hashFunction: (String) -> String) {
-    */
-/**
+ */
+fun Route.register(hashFunction: (String) -> String) {
+    /**
      * A POST request to the [Register] route, will try to create a new user.
      *
      * - If the user is already logged, it redirects to the [UserPage] page.
@@ -28,67 +31,59 @@ fun Route.register(dao: DAOFacade, hashFunction: (String) -> String) {
      * - Then it will validate the specified parameters, redirecting displaying an error to the [Register] page.
      * - On success, it generates a new [User]. But instead of storing the password plain text,
      *   it stores a hash of the password.
-     *//*
+     */
+    route("/register") {
+        post {
+            // get current from session data if any
+            val user = call.sessions.get<ASSSession>()?.let { fetchUser(it.userId) }
+            // user already logged in? redirect to user page.
+            if (user != null) return@post call.respond("Logged")
 
-    post<Register> {
-        // get current from session data if any
-        val user = call.sessions.get<KweetSession>()?.let { dao.user(it.userId) }
-        // user already logged in? redirect to user page.
-        if (user != null) return@post call.redirect(UserPage(user.userId))
+            // receive post data
+            // TODO: use conneg when it's ready and `call.receive<Register>()`
+            val registration = call.receive<Parameters>()
+            val password = registration["password"] ?: ""
+            val displayName = registration["displayName"] ?: ""
+            val email = registration["email"] ?: ""
 
-        // receive post data
-        // TODO: use conneg when it's ready and `call.receive<Register>()`
-        val registration = call.receive<Parameters>()
-        val userId = registration["userId"] ?: return@post call.redirect(it)
-        val password = registration["password"] ?: return@post call.redirect(it)
-        val displayName = registration["displayName"] ?: return@post call.redirect(it)
-        val email = registration["email"] ?: return@post call.redirect(it)
+            when {
+                password.length < 6 ->call.respond("Password should be at least 6 characters long")
+                email.length < 4 -> call.respond("Login should be at least 4 characters long")
+                !userNameValid(email) -> call.respond("Login should be consists of digits, letters, dots or underscores")
+                fetchUser(email) != null ->call.respond("User with the following login is already registered")
+                else -> {
+                    val hash = hashFunction(password)
 
-        // prepare location class for error if any
-        val error = Register(userId, displayName, email)
-
-        when {
-            password.length < 6 -> call.redirect(error.copy(error = "Password should be at least 6 characters long"))
-            userId.length < 4 -> call.redirect(error.copy(error = "Login should be at least 4 characters long"))
-            !userNameValid(userId) -> call.redirect(error.copy(error = "Login should be consists of digits, letters, dots or underscores"))
-            dao.user(userId) != null -> call.redirect(error.copy(error = "User with the following login is already registered"))
-            else -> {
-                val hash = hashFunction(password)
-                val newUser = User(userId, email, displayName, hash)
-
-                try {
-                    dao.createUser(newUser)
-                } catch (e: Throwable) {
-                    when {
-                        // NOTE: This is security issue that allows to enumerate/verify registered users. Do not do this in real app :)
-                        dao.user(userId) != null -> call.redirect(error.copy(error = "User with the following login is already registered"))
-                        dao.userByEmail(email) != null -> call.redirect(error.copy(error = "User with the following email $email is already registered"))
-                        else -> {
-                            application.log.error("Failed to register user", e)
-                            call.redirect(error.copy(error = "Failed to register"))
+                    try {
+                        createUser(email, displayName, hash)
+                    } catch (e: Throwable) {
+                        when {
+                            // NOTE: This is security issue that allows to enumerate/verify registered users. Do not do this in real app :)
+                            fetchUser(email) != null -> call.respond("User with the following login is already registered")
+                            else -> {
+                                application.log.error("Failed to register user", e)
+                                call.respond("Failed to register")
+                            }
                         }
                     }
-                }
 
-                call.sessions.set(KweetSession(newUser.userId))
-                call.redirect(UserPage(newUser.userId))
+                    call.sessions.set(ASSSession(email))
+                    call.respond("User $email created")
+                }
+            }
+        }
+
+        /**
+         * A GET request would show the registration form (with an error if specified by the URL in the case there was an error in the form processing)
+         * If the user is already logged, it redirects the client to the [UserPage] instead.
+         */
+        get {
+            val user = call.sessions.get<ASSSession>()?.let { fetchUser(it.userId) }
+            if (user != null) {
+                call.respond("User ${user.email}")
+            } else {
+                call.respond("Not logged")
             }
         }
     }
-
-    */
-/**
-     * A GET request would show the registration form (with an error if specified by the URL in the case there was an error in the form processing)
-     * If the user is already logged, it redirects the client to the [UserPage] instead.
-     *//*
-
-    get<Register> {
-        val user = call.sessions.get<KweetSession>()?.let { dao.user(it.userId) }
-        if (user != null) {
-            call.redirect(UserPage(user.userId))
-        } else {
-            call.respond(FreeMarkerContent("register.ftl", mapOf("pageUser" to User(it.userId, it.email, it.displayName, ""), "error" to it.error), ""))
-        }
-    }
 }
-*/

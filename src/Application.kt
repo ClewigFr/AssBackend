@@ -1,13 +1,9 @@
 package com.ass
 
-import com.ass.controller.login
-import com.ass.controller.pageViews
-import com.ass.controller.pages
-import com.ass.controller.stats
+import com.ass.controller.*
 import com.ass.dao.Pages
 import com.ass.dao.PagesViews
 import com.ass.dao.Users
-import com.ass.dao.createUser
 import com.ass.routing.root
 import com.github.mustachejava.DefaultMustacheFactory
 import io.ktor.application.Application
@@ -111,6 +107,7 @@ fun Application.routingInitialization() {
         pages()
         stats()
         login(hashFunction)
+        register(hashFunction)
     }
 }
 
@@ -120,9 +117,6 @@ fun Application.databaseInitialization() {
         create(Pages)
         create(PagesViews)
         create(Users)
-
-        //TEMP
-        createUser()
     }
 }
 
