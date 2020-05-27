@@ -1,7 +1,7 @@
 package com.ass.routing
 
+import com.ass.ASSSession
 import com.ass.MustacheUser
-import com.ass.MySession
 import io.ktor.application.call
 import io.ktor.http.ContentType
 import io.ktor.http.content.resources
@@ -31,7 +31,7 @@ fun Routing.root() {
     }
 
     get("/session/increment") {
-        val session = call.sessions.get<MySession>() ?: MySession()
+        val session = call.sessions.get<ASSSession>() ?: ASSSession()
         call.sessions.set(session.copy(count = session.count + 1))
         call.respondText("Counter is ${session.count}. Refresh to increment.")
     }
