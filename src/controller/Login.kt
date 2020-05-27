@@ -3,6 +3,7 @@ package com.ass.controller
 import com.ass.ASSSession
 import com.ass.dao.fetchUser
 import com.ass.dao.userNameValid
+import com.ass.dao.verifUser
 import io.ktor.application.call
 import io.ktor.http.Parameters
 import io.ktor.request.receive
@@ -46,7 +47,7 @@ fun Route.login(hash: (String) -> String) {
                 userId.length < 4 -> null
                 password.length < 6 -> null
                 !userNameValid(userId) -> null
-                else -> fetchUser(userId, hash(password))
+                else -> verifUser(userId, hash(password))
             }
 
             if (login == null) {
