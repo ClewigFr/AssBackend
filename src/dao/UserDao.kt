@@ -8,7 +8,7 @@ fun fetchUser(userId: String, hash: String? = null) : User? = transaction {
     User.find { Users.email eq userId }.firstOrNull() // TODO VERIF password hash
 }
 
-fun verifUser(userId: String, hash: String) : User? = transaction {
+fun verifyUser(userId: String, hash: String) : User? = transaction {
     User.find { Users.email eq userId and (Users.passwordHash eq hash) }.firstOrNull() // TODO VERIF password hash
 }
 

@@ -22,23 +22,22 @@ fun Routing.stats() {
                         pv.page
                     }.values
 
-                    //Count view per pages
+                    // Count views per page
                     groupViews.forEach {
-                        stringBuilder.appendln("Page :${it.first().page} has been seen : ${it.count()} times")
+                        stringBuilder.appendln("Page: ${it.first().page} has been seen: ${it.count()} times")
                     }
 
-                    //Count sessions
+                    // Count sessions
                     val nbSession = this.groupBy { pv ->
                         pv.sessionId
                     }.size
 
-                    stringBuilder.appendln("Number of session :${nbSession}")
+                    stringBuilder.appendln("Number of session: ${nbSession}")
 
-                    //Count view per session
-
+                    // Count view per session
                     val group = this.groupingBy { it.sessionId }
                     group.eachCount().forEach { (session, count) ->
-                        stringBuilder.appendln("session :${session} has seen : $count pages")
+                        stringBuilder.appendln("session: ${session} has seen: $count pages")
                     }
                     stringBuilder.toString()
                 })

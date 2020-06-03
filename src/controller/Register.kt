@@ -36,7 +36,7 @@ fun Route.register(hashFunction: (String) -> String) {
         post {
             // get current from session data if any
             val user = call.sessions.get<ASSSession>()?.let { fetchUser(it.userId) }
-            // user already logged in? redirect to user page.
+            // user already logged in, redirect to user page.
             if (user != null) return@post call.respond("Logged")
 
             // receive post data
@@ -49,7 +49,7 @@ fun Route.register(hashFunction: (String) -> String) {
             when {
                 password.length < 6 ->call.respond("Password should be at least 6 characters long")
                 email.length < 4 -> call.respond("Login should be at least 4 characters long")
-                !userNameValid(email) -> call.respond("Login should be consists of digits, letters, dots or underscores")
+                !userNameValid(email) -> call.respond("Login should only contains digits, letters, dots or underscores")
                 fetchUser(email) != null ->call.respond("User with the following login is already registered")
                 else -> {
                     val hash = hashFunction(password)
