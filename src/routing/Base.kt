@@ -18,7 +18,7 @@ import io.ktor.sessions.set
 
 fun Routing.root() {
     get("/") {
-        call.respondText("Clewig vous souhaite la bienvenue sur Anonymous Simples Stats !", contentType = ContentType.Text.Plain)
+        call.respondText("Clewig vous souhaite la bienvenue sur Anonymous Simple Stats !", contentType = ContentType.Text.Plain)
     }
 
     get("/html-mustache") {
