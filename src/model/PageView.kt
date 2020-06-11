@@ -18,15 +18,13 @@ class PageView(id: EntityID<Int>) : IntEntity(id) {
 data class PageViewsJson(
     var page: UUID,
     var sessionId: UUID,
-    var timestamp: Long,
-    var pageName: String?
+    var timestamp: Long
 )
 
 fun PageView.toPageViewsJson() = PageViewsJson(
     page.id.value,
     sessionId,
-    timestamp,
-    Page.findById(page.id.value)?.name
+    timestamp
 )
 
 data class PostPageViews(val pageViews: List<PageViewsJson>)
