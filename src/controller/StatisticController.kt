@@ -24,7 +24,7 @@ fun Routing.stats() {
 
                     // Count views per page
                     groupViews.forEach {
-                        stringBuilder.appendln("Page: ${it.first().page}  ${it.first().pageName} has been seen: ${it.count()} times")
+                        stringBuilder.appendln("Page: ${it.first().page} has been seen: ${it.count()} times")
                     }
 
                     // Count sessions
@@ -47,12 +47,11 @@ fun Routing.stats() {
     }
     route("/stats/json") {
         get {
-            fetchAllStats().apply {
-                call.respond(mapOf("stats" to synchronized(this) {
-                    this.toList()
-                }))
-            }
-
+            call.respond(mapOf("stats" to synchronized(this) {
+                fetchAllStats().toList()
+            }, "pages" to synchronized(this) {
+                fetchAllPages().toList()
+            }))
         }
     }
 }
