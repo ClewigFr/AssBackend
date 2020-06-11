@@ -51,8 +51,8 @@ fun Routing.pageViews() {
  */
 fun addPageViews(post: PostPageViews): HttpStatusCode {
     var statusCode = HttpStatusCode.Continue
-    post.pageViews.forEach { hit ->
-        transaction {
+    transaction {
+        post.pageViews.forEach { hit ->
             val pageDb = Page.findById(hit.page)
             if (pageDb != null) {
                 PageView.new {
