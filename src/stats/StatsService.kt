@@ -8,16 +8,19 @@ import com.ass.model.PageStat
 import com.ass.model.StatsOut
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.util.concurrent.ConcurrentHashMap
+import org.jetbrains.exposed.v1.core.SortOrder
+import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.count
 import org.jetbrains.exposed.v1.core.countDistinct
 import org.jetbrains.exposed.v1.core.div
+import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greater
 import org.jetbrains.exposed.v1.core.longLiteral
 import org.jetbrains.exposed.v1.core.plus
-import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 const val DAY_MS = 24L * 60 * 60 * 1000
 
@@ -28,41 +31,46 @@ const val MIN_VALID_TIMESTAMP = 100_000L
 const val MAX_TZ_OFFSET_MS = 14L * 60 * 60 * 1000
 
 /**
- * Computes statistics with SQL aggregates, so the cost doesn't depend on shipping every row.
- * Results are cached for [cacheMs] per time zone: dashboards don't need second-level freshness,
- * and this turns a full-table aggregate per request into one per [cacheMs].
+ * Per-application statistics computed with SQL aggregates (served by the (app, timestamp) index).
+ * Results are cached for [cacheMs] per application and time zone: dashboards don't need
+ * second-level freshness, and this turns an aggregate per request into one per [cacheMs].
  */
 class StatsService(private val db: Db, private val cacheMs: Long = 5_000) {
+    private data class Key(val app: UUID, val tz: Long)
     private class Cached(val at: Long, val value: StatsOut)
-    private val cache = ConcurrentHashMap<Long, Cached>()
+    private val cache = ConcurrentHashMap<Key, Cached>()
     private val computeLock = Mutex()
 
-    suspend fun compute(tzOffsetMs: Long = 0, now: Long = System.currentTimeMillis()): StatsOut {
-        if (cacheMs <= 0) return computeUncached(tzOffsetMs)
-        cache[tzOffsetMs]?.takeIf { now - it.at < cacheMs }?.let { return it.value }
+    suspend fun compute(app: UUID, tzOffsetMs: Long = 0): StatsOut {
+        if (cacheMs <= 0) return computeUncached(app, tzOffsetMs)
+        val key = Key(app, tzOffsetMs)
+        fun fresh() = cache[key]?.takeIf { System.currentTimeMillis() - it.at < cacheMs }?.value
+        fresh()?.let { return it }
         // One computation at a time: concurrent requests wait for it instead of all hitting the database
         return computeLock.withLock {
-            cache[tzOffsetMs]?.takeIf { System.currentTimeMillis() - it.at < cacheMs }?.value
-                ?: computeUncached(tzOffsetMs).also {
-                    if (cache.size > 64) cache.clear()
-                    cache[tzOffsetMs] = Cached(System.currentTimeMillis(), it)
-                }
+            fresh() ?: computeUncached(app, tzOffsetMs).also {
+                if (cache.size > 1_000) cache.clear()
+                cache[key] = Cached(System.currentTimeMillis(), it)
+            }
         }
     }
 
-    /** Forget cached results (after a page is created or deleted). */
-    fun invalidate() = cache.clear()
+    /** Forget cached results for [app] (after its pages change). */
+    fun invalidate(app: UUID) = cache.keys.removeIf { it.app == app }
 
-    private suspend fun computeUncached(tzOffsetMs: Long): StatsOut = db.query {
+    private suspend fun computeUncached(app: UUID, tzOffsetMs: Long): StatsOut = db.query {
+        val ofApp = PagesViews.app eq app
+
         val events = PagesViews.id.count()
         val sessions = PagesViews.sessionId.countDistinct()
-        val totals = PagesViews.select(events, sessions).single()
+        val totals = PagesViews.select(events, sessions).where { ofApp }.single()
 
         val views = PagesViews.page.count()
         val viewsPerPage = PagesViews.select(PagesViews.page, views)
+            .where { ofApp }
             .groupBy(PagesViews.page)
             .associate { it[PagesViews.page].value to it[views] }
-        val pages = Pages.selectAll().orderBy(Pages.name).map {
+        val pages = Pages.selectAll().where { Pages.app eq app }.orderBy(Pages.name).map {
             val id = it[Pages.id].value
             PageStat(id, it[Pages.name], viewsPerPage[id] ?: 0)
         }
@@ -72,7 +80,7 @@ class StatsService(private val db: Db, private val cacheMs: Long = 5_000) {
         val dayEvents = PagesViews.id.count()
         val daySessions = PagesViews.sessionId.countDistinct()
         val days = PagesViews.select(day, dayEvents, daySessions)
-            .where { PagesViews.timestamp greater MIN_VALID_TIMESTAMP }
+            .where { ofApp and (PagesViews.timestamp greater MIN_VALID_TIMESTAMP) }
             .groupBy(day)
             .orderBy(day to SortOrder.ASC)
             .map { DayStat(it[day], it[dayEvents], it[daySessions]) }

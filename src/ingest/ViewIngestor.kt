@@ -1,5 +1,6 @@
 package com.ass.ingest
 
+import com.ass.dao.Apps
 import com.ass.dao.Pages
 import com.ass.dao.PagesViews
 import com.ass.db.Db
@@ -17,7 +18,7 @@ import org.slf4j.LoggerFactory
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
-data class ViewRow(val page: UUID, val sessionId: UUID, val timestamp: Long)
+data class ViewRow(val page: UUID, val app: UUID?, val sessionId: UUID, val timestamp: Long)
 
 /**
  * Buffers accepted page views in memory and writes them in batches (one INSERT per batch),
@@ -95,6 +96,7 @@ class ViewIngestor(
     private suspend fun insert(rows: List<ViewRow>) = db.query {
         PagesViews.batchInsert(rows, ignore = false, shouldReturnGeneratedValues = false) { row ->
             this[PagesViews.page] = EntityID(row.page, Pages)
+            this[PagesViews.app] = row.app?.let { EntityID(it, Apps) }
             this[PagesViews.sessionId] = row.sessionId
             this[PagesViews.timestamp] = row.timestamp
         }

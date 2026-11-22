@@ -80,9 +80,21 @@ fun sessionCookie(response: HttpResponse): String? =
 suspend fun ApplicationTestBuilder.registerAndLogin(email: String, password: String = "secret123"): String =
     sessionCookie(postForm("/register", "email" to email, "password" to password, "displayName" to "Test"))!!
 
-/** Create a page as [cookie]'s user and return its id. */
-suspend fun ApplicationTestBuilder.createPage(cookie: String, name: String = "home"): String =
-    call(HttpMethod.Post, "/pages", cookie = cookie, json = """{"name":"$name"}""").bodyAsText().substringAfter("id: ")
+private val idPattern = Regex("\"id\":\"([0-9a-f-]{36})\"")
+
+/** Create an application as [cookie]'s user and return its id. */
+suspend fun ApplicationTestBuilder.createApp(cookie: String, name: String = "My app"): String =
+    idPattern.find(call(HttpMethod.Post, "/apps", cookie = cookie, json = """{"name":"$name"}""").bodyAsText())!!.groupValues[1]
+
+/** Create a page in [app] and return its id. */
+suspend fun ApplicationTestBuilder.createPage(cookie: String, app: String, name: String = "home"): String =
+    idPattern.find(call(HttpMethod.Post, "/apps/$app/pages", cookie = cookie, json = """{"name":"$name"}""").bodyAsText())!!.groupValues[1]
+
+/** Create an application with one page; returns (app id, page id). */
+suspend fun ApplicationTestBuilder.appWithPage(cookie: String): Pair<String, String> {
+    val app = createApp(cookie)
+    return app to createPage(cookie, app)
+}
 
 fun viewJson(page: String, elapsed: Long = 1000, session: String = UUID.randomUUID().toString()) =
     """{"page":"$page","sessionId":"$session","timestamp":$elapsed}"""

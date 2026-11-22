@@ -36,9 +36,9 @@ class AuthTest {
 
     @Test
     fun statsNeedAValidSession() = withServer {
-        assertEquals(HttpStatusCode.Unauthorized, call(HttpMethod.Get, "/stats/json").status)
+        assertEquals(HttpStatusCode.Unauthorized, call(HttpMethod.Get, "/apps").status)
         val cookie = registerAndLogin("a@x.io")
-        assertEquals(HttpStatusCode.OK, call(HttpMethod.Get, "/stats/json", cookie = cookie).status)
+        assertEquals(HttpStatusCode.OK, call(HttpMethod.Get, "/apps", cookie = cookie).status)
     }
 
     @Test
@@ -46,7 +46,7 @@ class AuthTest {
         registerAndLogin("a@x.io")
         // Unsigned cookie claiming to be a@x.io
         val forged = """MY_SESSION={"userId":"a@x.io","issuedAt":${System.currentTimeMillis()}}"""
-        assertEquals(HttpStatusCode.Unauthorized, call(HttpMethod.Get, "/stats/json", cookie = forged).status)
+        assertEquals(HttpStatusCode.Unauthorized, call(HttpMethod.Get, "/apps", cookie = forged).status)
     }
 
     @Test

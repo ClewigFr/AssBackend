@@ -15,13 +15,13 @@ class PageViewsTest {
 
     @Test
     fun allValidViewsReturn200() = withServer {
-        val page = createPage(registerAndLogin("a@x.io"))
+        val page = appWithPage(registerAndLogin("a@x.io")).second
         assertEquals(HttpStatusCode.OK, postViews("""{"pageViews":[${viewJson(page)},${viewJson(page)}]}"""))
     }
 
     @Test
     fun unknownPageMixedWithValidReturns206() = withServer {
-        val page = createPage(registerAndLogin("a@x.io"))
+        val page = appWithPage(registerAndLogin("a@x.io")).second
         val body = """{"pageViews":[${viewJson(page)},${viewJson(UUID.randomUUID().toString())}]}"""
         assertEquals(HttpStatusCode.PartialContent, postViews(body))
     }
@@ -44,14 +44,14 @@ class PageViewsTest {
 
     @Test
     fun missingFieldsAreRejected() = withServer {
-        val page = createPage(registerAndLogin("a@x.io"))
+        val page = appWithPage(registerAndLogin("a@x.io")).second
         assertEquals(HttpStatusCode.BadRequest, postViews("""{"pageViews":[{"page":"$page"}]}"""))
         assertEquals(HttpStatusCode.BadRequest, postViews("""{}"""))
     }
 
     @Test
     fun outOfRangeTimestampIsRejected() = withServer {
-        val page = createPage(registerAndLogin("a@x.io"))
+        val page = appWithPage(registerAndLogin("a@x.io")).second
         assertEquals(HttpStatusCode.BadRequest, postViews("""{"pageViews":[${viewJson(page, elapsed = -1)}]}"""))
         assertEquals(HttpStatusCode.BadRequest, postViews("""{"pageViews":[${viewJson(page, elapsed = MAX_VIEW_AGE_MS + 1)}]}"""))
     }

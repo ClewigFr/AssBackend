@@ -26,17 +26,27 @@ typealias JsonUUID = @Serializable(with = UUIDSerializer::class) UUID
 @Serializable
 data class PageViewIn(val page: JsonUUID? = null, val sessionId: JsonUUID? = null, val timestamp: Long? = null)
 
+/** [app] is the application UUID the client was configured with; every page must belong to it. */
 @Serializable
-data class PostPageViews(val pageViews: List<PageViewIn?>? = null)
+data class PostPageViews(val app: JsonUUID? = null, val pageViews: List<PageViewIn?>? = null)
 
 @Serializable
-data class PageIn(val id: JsonUUID? = null, val name: String? = null)
+data class NameIn(val name: String? = null)
+
+@Serializable
+data class AppOut(val id: JsonUUID, val name: String, val pages: Long = 0)
+
+@Serializable
+data class AppsOut(val apps: List<AppOut>)
 
 @Serializable
 data class PageOut(val id: JsonUUID, val name: String)
 
 @Serializable
 data class PagesOut(val pages: List<PageOut>)
+
+@Serializable
+data class AppPagesOut(val app: AppOut, val pages: List<PageOut>)
 
 @Serializable
 data class PageStat(val id: JsonUUID, val name: String, val views: Long)

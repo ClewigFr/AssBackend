@@ -21,7 +21,9 @@ const val MAX_VIEW_AGE_MS = 365L * 24 * 60 * 60 * 1000
 val VIEWS_RATE_LIMIT = RateLimitName("views")
 
 /**
- * POST /views {"pageViews":[{"page","sessionId","timestamp"}]}, timestamp = ms elapsed since the view.
+ * POST /views {"app","pageViews":[{"page","sessionId","timestamp"}]}, timestamp = ms elapsed since the view.
+ * When "app" is given, only pages of that application are accepted. Clients that don't send it
+ * (older library versions) are still accepted for any existing page.
  * 200: all views accepted, 206: some rejected, 400: none accepted, 429: rate limited,
  * 503: write buffer full. The Android client retries on anything but 200/206/400.
  */
@@ -35,18 +37,22 @@ fun Route.pageViews(pageCache: PageCache, ingestor: ViewIngestor, rateLimited: B
 
 private fun Route.viewsRoute(pageCache: PageCache, ingestor: ViewIngestor) {
     post("/views") {
-        val hits = call.receiveNullable<PostPageViews>()?.pageViews.orEmpty()
+        val body = call.receiveNullable<PostPageViews>()
+        val hits = body?.pageViews.orEmpty()
         if (hits.isEmpty() || hits.size > MAX_VIEWS_PER_REQUEST) {
             return@post call.respond(HttpStatusCode.BadRequest)
         }
         val now = System.currentTimeMillis()
-        val pages = pageCache.filterExisting(hits.mapNotNull { it?.page }.toSet(), now)
+        val appOfPage = pageCache.appsOf(hits.mapNotNull { it?.page }.toSet(), now)
         val rows = hits.mapNotNull { hit ->
             val page = hit?.page
             val session = hit?.sessionId
             val elapsed = hit?.timestamp
-            if (page != null && page in pages && session != null && elapsed != null && elapsed in 0..MAX_VIEW_AGE_MS) {
-                ViewRow(page, session, now - elapsed)
+            val pageKnown = page != null && appOfPage.containsKey(page)
+            val pageApp = page?.let { appOfPage[it] }
+            val appMatches = body?.app == null || body.app == pageApp
+            if (pageKnown && appMatches && session != null && elapsed != null && elapsed in 0..MAX_VIEW_AGE_MS) {
+                ViewRow(page!!, pageApp, session, now - elapsed)
             } else null
         }
         val status = when {

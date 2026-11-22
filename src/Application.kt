@@ -1,10 +1,12 @@
 package com.ass
 
 import com.ass.controller.*
+import com.ass.dao.Apps
 import com.ass.dao.Pages
 import com.ass.dao.PagesViews
 import com.ass.dao.Users
 import com.ass.db.Db
+import com.ass.db.migrateToApplications
 import com.ass.ingest.PageCache
 import com.ass.ingest.ViewIngestor
 import com.ass.routing.root
@@ -77,8 +79,7 @@ fun Application.module() {
     routing {
         root()
         pageViews(pageCache, ingestor, rateLimited = viewsRateLimit > 0)
-        pages(db, pageCache, statsService)
-        stats(db, statsService)
+        apps(db, pageCache, statsService)
         login(db)
         register(db)
     }
@@ -165,8 +166,9 @@ fun Application.installModule() {
 }
 
 /**
- * Whether anyone may create an account. Every account can read all stats, so this is
- * closed by default outside dev: set REGISTRATION_OPEN=true to create accounts, then unset it.
+ * Whether anyone may create an account. Each account only sees its own applications, but
+ * registration stays closed by default outside dev so a public server can't be used by
+ * strangers: set REGISTRATION_OPEN=true to allow sign-ups.
  */
 val Application.registrationOpen: Boolean
     get() = environment.config.propertyOrNull("ktor.security.registration_open")?.getString()?.toBoolean()
@@ -175,11 +177,14 @@ val Application.registrationOpen: Boolean
 // Database init: also adds columns introduced after the tables were first created
 fun databaseInitialization(db: Db) {
     transaction(db.database) {
-        SchemaUtils.create(Users, Pages, PagesViews)
+        SchemaUtils.create(Users, Apps, Pages, PagesViews)
         // Add missing columns and indexes, but never drop anything automatically
-        MigrationUtils.statementsRequiredForDatabaseMigration(Users, Pages, PagesViews, withLogs = false)
+        MigrationUtils.statementsRequiredForDatabaseMigration(Users, Apps, Pages, PagesViews, withLogs = false)
             .filterNot { it.trimStart().startsWith("DROP", ignoreCase = true) || it.contains(" DROP ", ignoreCase = true) }
             .forEach { exec(it) }
+    }
+    transaction(db.database) {
+        migrateToApplications()
     }
 }
 

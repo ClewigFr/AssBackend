@@ -10,7 +10,7 @@ Everything is set through environment variables, which are read in `resources/ap
 |---------------------|-----------------|--------------------|------------------------------------------|
 | `SESSION_SIGN_KEY`  | **yes, in prod**| random (dev only)  | Hex key used to sign session cookies     |
 | `CORS_ORIGINS`      | yes, in prod    | `http://localhost:8080` | Comma-separated dashboard origins allowed to call the API with cookies, e.g. `https://ass-dashboard.example.com` |
-| `REGISTRATION_OPEN` | no              | `true` in dev, `false` otherwise | Allow `POST /register`. Every account can read all stats, so keep it closed in production: set it to `true` only while you create accounts |
+| `REGISTRATION_OPEN` | no              | `true` in dev, `false` otherwise | Allow `POST /register`. Each account only sees its own applications; leave it closed if strangers shouldn't use your server |
 | `JDBC_DATABASE_URL` | yes, in prod    | in-memory H2       | Database URL (PostgreSQL in prod)        |
 | `DB_POOL_SIZE`      | no              | `10`               | Database connections (and threads running queries) |
 | `FLUSH_INTERVAL_MS` | no              | `200`              | How often buffered page views are written to the database |
@@ -47,7 +47,7 @@ Things to know:
 
 - **Sessions expire after 7 days**, checked on the server. A stolen cookie stops working after that, even though it's signed.
 - **Brute-force protection:** after 5 wrong passwords, an account refuses logins for 15 minutes (`429`). The counter is kept in memory, per server instance.
-- **Registration is closed in production by default.** To create an account: set `REGISTRATION_OPEN=true`, register, then unset it and restart.
+- **Registration is closed in production by default.** To create accounts, set `REGISTRATION_OPEN=true`. Each account only sees its own applications and stats.
 - Login takes the same time whether or not the email exists, so it doesn't reveal which accounts exist.
 - `POST /views` accepts at most 5000 views per request. Bigger batches get `400`.
 
@@ -69,7 +69,7 @@ Measured locally with ApacheBench (H2 in memory, so absolute numbers will differ
 | | Before | After |
 |---|---|---|
 | `POST /views` (20 views per request, 50 concurrent) | 1,117 req/s, p99 156 ms | **4,722 req/s** (≈94,000 views/s), p99 62 ms |
-| `GET /stats/json` with ~140k views stored | 16 req/s, 17.5 MB per response | **264 req/s, 248 bytes** |
+| Stats with ~140k views stored (`GET /stats/json`, now `/apps/{app}/stats`) | 16 req/s, 17.5 MB per response | **264 req/s, 248 bytes** |
 | Server memory after the load | 5.3 GB | **335 MB** |
 
 ### Cookies across sites
@@ -121,12 +121,22 @@ On Heroku, the `Procfile` runs the shadow jar and `app.json` provisions PostgreS
 
 | Method   | Path          | Auth  | Description |
 |----------|---------------|-------|-------------|
-| `POST`   | `/views`      | none  | Ingest page views: `{"pageViews":[{"page","sessionId","timestamp"}]}`, where `timestamp` is ms elapsed since the view. Returns `200` if all were accepted, `206` if some were rejected, `400` if none were, `429` if rate limited, `503` if the write buffer is full. |
-| `GET`    | `/pages`      | none  | List pages |
-| `POST`   | `/pages`      | login | Create a page `{"name": "..."}`; the caller becomes its owner |
-| `DELETE` | `/pages`      | owner | Delete a page and its views `{"id": "...", "name": ""}` |
-| `GET`    | `/stats`      | login | Plain-text summary |
-| `GET`    | `/stats/json` | login | Aggregated stats: `{"events","sessions","pages":[{"id","name","views"}],"days":[{"day","events","sessions"}]}`. `?tz=<minutes east of UTC>` sets the time zone for `day` (days since 1970-01-01) |
+| `POST`   | `/views`      | none  | Ingest page views: `{"app","pageViews":[{"page","sessionId","timestamp"}]}`, where `timestamp` is ms elapsed since the view. Returns `200` if all were accepted, `206` if some were rejected, `400` if none were, `429` if rate limited, `503` if the write buffer is full. |
+| `GET`    | `/apps`       | login | Your applications: `{"apps":[{"id","name","pages"}]}` |
+| `POST`   | `/apps`       | login | Create an application `{"name"}` → `201 {"id","name"}`. The id is the UUID to configure the Android library with |
+| `GET`    | `/apps/{app}` | owner | The application and its pages: `{"app":{...},"pages":[{"id","name"}]}` |
+| `DELETE` | `/apps/{app}` | owner | Delete the application, its pages and their views → `204` |
+| `POST`   | `/apps/{app}/pages` | owner | Add a page `{"name"}` → `201 {"id","name"}`. The id is what the app passes to `logScreen` |
+| `DELETE` | `/apps/{app}/pages/{page}` | owner | Delete a page and its views → `204` |
+| `GET`    | `/apps/{app}/stats` | owner | Aggregated stats: `{"events","sessions","pages":[{"id","name","views"}],"days":[{"day","events","sessions"}]}`. `?tz=<minutes east of UTC>` sets the time zone for `day` (days since 1970-01-01) |
+
+Another user's application answers `404`, exactly like one that doesn't exist.
+
+### Applications
+
+A user creates **applications** (name + generated UUID), and adds **pages** to each (name + generated UUID). The Android library is initialized with the application's UUID and calls `logScreen` with a page's UUID. `POST /views` then only accepts pages that belong to that application. Older library versions that don't send `"app"` still work: their views are attributed to the page's application.
+
+When upgrading an existing database, pages created before applications are moved automatically, on startup, into an "Application par défaut" per owner, and existing views are linked to it.
 | `POST`   | `/register`   | none  | Form fields: `email`, `password`, `displayName` |
 | `POST`   | `/login`      | none  | Form fields: `userId` (email), `password` |
 | `GET`    | `/logout`     | none  | Clear the session |

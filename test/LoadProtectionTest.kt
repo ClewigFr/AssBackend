@@ -13,14 +13,14 @@ class LoadProtectionTest {
         "ktor.performance.ingest_capacity" to "1",
         "ktor.performance.flush_interval_ms" to "60000"
     ) {
-        val page = createPage(registerAndLogin("a@x.io"))
+        val page = appWithPage(registerAndLogin("a@x.io")).second
         val two = """{"pageViews":[${viewJson(page)},${viewJson(page)}]}"""
         assertEquals(HttpStatusCode.ServiceUnavailable, call(HttpMethod.Post, "/views", json = two).status)
     }
 
     @Test
     fun viewsAreRateLimitedPerClient() = withServer("ktor.performance.views_rate_limit" to "2") {
-        val page = createPage(registerAndLogin("a@x.io"))
+        val page = appWithPage(registerAndLogin("a@x.io")).second
         val body = """{"pageViews":[${viewJson(page)}]}"""
         assertEquals(HttpStatusCode.OK, call(HttpMethod.Post, "/views", json = body).status)
         assertEquals(HttpStatusCode.OK, call(HttpMethod.Post, "/views", json = body).status)
@@ -30,8 +30,9 @@ class LoadProtectionTest {
     @Test
     fun largeResponsesAreCompressed() = withServer {
         val alice = registerAndLogin("a@x.io")
-        repeat(30) { createPage(alice, "page-with-a-long-enough-name-$it") }
-        val response = client.request("/stats/json") {
+        val app = createApp(alice)
+        repeat(30) { createPage(alice, app, "page-with-a-long-enough-name-$it") }
+        val response = client.request("/apps/$app/stats") {
             this.method = HttpMethod.Get
             headers.append(io.ktor.http.HttpHeaders.Cookie, alice)
             headers.append(io.ktor.http.HttpHeaders.AcceptEncoding, "gzip")

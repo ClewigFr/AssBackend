@@ -61,7 +61,7 @@ class SecurityTest {
 
     @Test
     fun oversizedBatchIsRejected() = withServer {
-        val page = createPage(registerAndLogin("a@x.io"))
+        val page = appWithPage(registerAndLogin("a@x.io")).second
         val views = (0..MAX_VIEWS_PER_REQUEST).joinToString(",") { viewJson(page) }
         assertEquals(HttpStatusCode.BadRequest, call(HttpMethod.Post, "/views", json = """{"pageViews":[$views]}""").status)
     }
