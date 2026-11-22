@@ -23,7 +23,7 @@ fun Routing.stats() {
         get {
             if (!call.isLoggedIn()) return@get call.respond(HttpStatusCode.Unauthorized, "not logged")
             fetchAllStats().apply {
-                call.respond(synchronized(this) {
+                call.respond(run {
                     val stringBuilder = StringBuilder()
                     val groupViews = this.groupBy { pv ->
                         pv.page
@@ -31,7 +31,7 @@ fun Routing.stats() {
 
                     // Count views per page
                     groupViews.forEach {
-                        stringBuilder.appendln("Page: ${it.first().page} has been seen: ${it.count()} times")
+                        stringBuilder.appendLine("Page: ${it.first().page} has been seen: ${it.count()} times")
                     }
 
                     // Count sessions
@@ -39,12 +39,12 @@ fun Routing.stats() {
                         pv.sessionId
                     }.size
 
-                    stringBuilder.appendln("Number of session: ${nbSession}")
+                    stringBuilder.appendLine("Number of session: ${nbSession}")
 
                     // Count view per session
                     val group = this.groupingBy { it.sessionId }
                     group.eachCount().forEach { (session, count) ->
-                        stringBuilder.appendln("session: $session has seen: $count pages")
+                        stringBuilder.appendLine("session: $session has seen: $count pages")
                     }
                     stringBuilder.toString()
                 })
@@ -57,12 +57,8 @@ fun Routing.stats() {
             if (!call.isLoggedIn()) return@get call.respond(HttpStatusCode.Unauthorized, "not logged")
             call.respond(
                 mapOf(
-                    "stats" to synchronized(this) {
-                        fetchAllStats().toList()
-                    },
-                    "pages" to synchronized(this) {
-                        fetchAllPages().toList()
-                    }
+                    "stats" to fetchAllStats(),
+                    "pages" to fetchAllPages()
                 )
             )
         }

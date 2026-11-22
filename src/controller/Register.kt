@@ -8,6 +8,7 @@ import com.ass.model.User
 import io.ktor.application.application
 import io.ktor.application.call
 import io.ktor.application.log
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
 import io.ktor.request.receive
 import io.ktor.response.respond
@@ -47,27 +48,27 @@ fun Route.register() {
             val email = registration["email"] ?: ""
 
             when {
-                password.length < 6 ->call.respond("Password should be at least 6 characters long")
-                email.length < 4 -> call.respond("Login should be at least 4 characters long")
-                !userNameValid(email) -> call.respond("Login should only contains digits, letters, dots or underscores")
-                fetchUser(email) != null ->call.respond("User with the following login is already registered")
+                password.length < 6 -> call.respond(HttpStatusCode.BadRequest, "Password should be at least 6 characters long")
+                email.length < 4 -> call.respond(HttpStatusCode.BadRequest, "Login should be at least 4 characters long")
+                !userNameValid(email) -> call.respond(HttpStatusCode.BadRequest, "Login should be a valid email address")
+                fetchUser(email) != null -> call.respond(HttpStatusCode.Conflict, "User with the following login is already registered")
                 else -> {
                     try {
                         createUser(email, displayName, password)
                     } catch (e: Throwable) {
                         when {
                             // NOTE: This is security issue that allows to enumerate/verify registered users. Do not do this in real app :)
-                            fetchUser(email) != null -> call.respond("User with the following login is already registered")
+                            fetchUser(email) != null -> call.respond(HttpStatusCode.Conflict, "User with the following login is already registered")
                             else -> {
                                 application.log.error("Failed to register user", e)
-                                call.respond("Failed to register")
+                                call.respond(HttpStatusCode.InternalServerError, "Failed to register")
                             }
                         }
                         return@post
                     }
 
                     call.sessions.set(ASSSession(email))
-                    call.respond("User $email created")
+                    call.respond(HttpStatusCode.Created, "User $email created")
                 }
             }
         }
@@ -81,7 +82,7 @@ fun Route.register() {
             if (user != null) {
                 call.respond("User ${user.email}")
             } else {
-                call.respond("Not logged")
+                call.respond(HttpStatusCode.Unauthorized, "Not logged")
             }
         }
     }

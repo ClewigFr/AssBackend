@@ -5,6 +5,7 @@ import com.ass.dao.fetchUser
 import com.ass.dao.userNameValid
 import com.ass.dao.verifyUser
 import io.ktor.application.call
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
 import io.ktor.request.receive
 import io.ktor.response.respond
@@ -31,7 +32,7 @@ fun Route.login() {
             if (user != null) {
                 call.respond("Logged")
             } else {
-                call.respond("Log error")
+                call.respond(HttpStatusCode.Unauthorized, "Not logged")
             }
         }
 
@@ -51,7 +52,7 @@ fun Route.login() {
             }
 
             if (login == null) {
-                call.respond("Invalid username or password for $userId")
+                call.respond(HttpStatusCode.Unauthorized, "Invalid username or password")
             } else {
                 call.sessions.set(ASSSession(login.email))
                 call.respond("Logged")

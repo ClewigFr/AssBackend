@@ -10,7 +10,7 @@ import com.ass.model.toPageJson
 import io.ktor.application.call
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
-import io.ktor.request.receive
+import io.ktor.request.receiveOrNull
 import io.ktor.response.respond
 import io.ktor.response.respondText
 import io.ktor.routing.*
@@ -27,9 +27,7 @@ fun Routing.pages() {
     route("/pages") {
         get {
             fetchAllPages().apply {
-                call.respond(mapOf("pages" to synchronized(this) {
-                    this.toList()
-                }))
+                call.respond(mapOf("pages" to this))
             }
         }
 
@@ -41,17 +39,20 @@ fun Routing.pages() {
             val user = call.sessions.get<ASSSession>()?.let { fetchUser(it.userId) }
 
             if (user == null) {
-                call.respondText("not logged", contentType = ContentType.Text.Plain)
+                call.respondText("not logged", ContentType.Text.Plain, HttpStatusCode.Unauthorized)
             } else {
-                val post = call.receive<PageJson>()
+                val post = call.receiveOrNull<PageJson>()
+                if (post == null || (post.name as String?).isNullOrBlank()) {
+                    return@post call.respondText("name is required", ContentType.Text.Plain, HttpStatusCode.BadRequest)
+                }
                 val page = transaction {
                     Page.new {
-                        name = post.name
+                        name = post.name.trim()
                         owner = user
                     }
                 }
                 val message = "Page : ${page.name}, id: ${page.id}"
-                call.respondText(message, contentType = ContentType.Text.Plain)
+                call.respondText(message, ContentType.Text.Plain, HttpStatusCode.Created)
             }
         }
 
@@ -59,11 +60,13 @@ fun Routing.pages() {
             val user = call.sessions.get<ASSSession>()?.let { fetchUser(it.userId) }
 
             if (user == null) {
-                call.respondText("not logged", contentType = ContentType.Text.Plain)
+                call.respondText("not logged", ContentType.Text.Plain, HttpStatusCode.Unauthorized)
             } else {
-                val post = call.receive<PageJson>()
+                val post = call.receiveOrNull<PageJson>()
+                val pageId = post?.id as java.util.UUID?
+                    ?: return@delete call.respondText("id is required", ContentType.Text.Plain, HttpStatusCode.BadRequest)
                 val deleted = transaction {
-                    val page = Page.findById(post.id)
+                    val page = Page.findById(pageId)
                     // Only the page's owner may delete it (and its views).
                     if (page == null || page.owner?.id != user.id) {
                         false
@@ -74,7 +77,7 @@ fun Routing.pages() {
                     }
                 }
                 if (deleted) {
-                    call.respondText("remove ${post.id}", contentType = ContentType.Text.Plain)
+                    call.respondText("remove $pageId", contentType = ContentType.Text.Plain)
                 } else {
                     call.respondText(
                         "page not found",

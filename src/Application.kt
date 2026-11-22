@@ -5,15 +5,19 @@ import com.ass.dao.Pages
 import com.ass.dao.PagesViews
 import com.ass.dao.Users
 import com.ass.routing.root
-import com.github.mustachejava.DefaultMustacheFactory
 import io.ktor.application.Application
 import io.ktor.application.install
+import com.google.gson.JsonParseException
+import io.ktor.application.call
+import io.ktor.features.BadRequestException
 import io.ktor.features.CORS
+import io.ktor.features.StatusPages
+import io.ktor.http.HttpStatusCode
+import io.ktor.response.respond
 import io.ktor.features.ContentNegotiation
 import io.ktor.gson.gson
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
-import io.ktor.mustache.Mustache
 import io.ktor.routing.routing
 import io.ktor.sessions.SessionTransportTransformerMessageAuthentication
 import io.ktor.sessions.Sessions
@@ -42,10 +46,6 @@ fun Application.module(testing: Boolean = false) {
 
 // Install module
 fun Application.installModule() {
-    install(Mustache) {
-        mustacheFactory = DefaultMustacheFactory("templates/mustache")
-    }
-
     install(Sessions) {
         cookie<ASSSession>("MY_SESSION") {
             if (isDev) {
@@ -73,6 +73,12 @@ fun Application.installModule() {
             val (scheme, host) = origin.split("://", limit = 2)
             host(host, schemes = listOf(scheme))
         }
+    }
+
+    // Unparseable request bodies are client errors (400), never 500: the Android client retries on 5xx.
+    install(StatusPages) {
+        exception<JsonParseException> { call.respond(HttpStatusCode.BadRequest) }
+        exception<BadRequestException> { call.respond(HttpStatusCode.BadRequest) }
     }
 
     install(ContentNegotiation) {
@@ -121,9 +127,7 @@ private val Application.corsOrigins: List<String>
     get() = environment.config.property("ktor.security.cors_origins").getString()
         .split(',').map { it.trim().trimEnd('/') }.filter { it.contains("://") }
 
-data class MustacheUser(val id: Int, val name: String)
-
-data class ASSSession(val userId: String = "", val count: Int = 0)
+data class ASSSession(val userId: String = "")
 
 val Application.envKind get() = environment.config.property("ktor.environment").getString()
 val Application.isDev get() = envKind == "dev"
