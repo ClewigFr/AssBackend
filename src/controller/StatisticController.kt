@@ -2,7 +2,13 @@ package com.ass.controller
 
 import com.ass.model.PageView
 import com.ass.model.toPageViewsJson
+import com.ass.ASSSession
+import com.ass.dao.fetchUser
+import io.ktor.application.ApplicationCall
 import io.ktor.application.call
+import io.ktor.http.HttpStatusCode
+import io.ktor.sessions.get
+import io.ktor.sessions.sessions
 import io.ktor.response.respond
 import io.ktor.routing.Routing
 import io.ktor.routing.get
@@ -15,6 +21,7 @@ import org.jetbrains.exposed.sql.transactions.transaction
 fun Routing.stats() {
     route("/stats") {
         get {
+            if (!call.isLoggedIn()) return@get call.respond(HttpStatusCode.Unauthorized, "not logged")
             fetchAllStats().apply {
                 call.respond(synchronized(this) {
                     val stringBuilder = StringBuilder()
@@ -47,6 +54,7 @@ fun Routing.stats() {
     }
     route("/stats/json") {
         get {
+            if (!call.isLoggedIn()) return@get call.respond(HttpStatusCode.Unauthorized, "not logged")
             call.respond(
                 mapOf(
                     "stats" to synchronized(this) {
@@ -60,6 +68,9 @@ fun Routing.stats() {
         }
     }
 }
+
+private fun ApplicationCall.isLoggedIn() =
+    sessions.get<ASSSession>()?.let { fetchUser(it.userId) } != null
 
 /**
  * Fetch all Stats

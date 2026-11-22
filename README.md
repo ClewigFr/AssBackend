@@ -9,6 +9,7 @@ Everything is set through environment variables, which are read in `resources/ap
 | Variable            | Required        | Default            | Purpose                                  |
 |---------------------|-----------------|--------------------|------------------------------------------|
 | `SESSION_SIGN_KEY`  | **yes, in prod**| random (dev only)  | Hex key used to sign session cookies     |
+| `CORS_ORIGINS`      | yes, in prod    | `http://localhost:8080` | Comma-separated dashboard origins allowed to call the API with cookies, e.g. `https://ass-dashboard.example.com` |
 | `JDBC_DATABASE_URL` | yes, in prod    | in-memory H2       | Database URL (PostgreSQL in prod)        |
 | `KTOR_ENV`          | no              | `dev`              | `dev` uses H2; any other value uses PostgreSQL |
 | `PORT`              | no              | `8080`             | HTTP port                                |
@@ -36,6 +37,10 @@ Things to know:
 - In `dev`, if no key is set, a random one is generated on every start, so restarting the server logs everyone out.
 - Use the same key on every instance when you run more than one dyno or container.
 
+### Cookies across sites
+
+The dashboard and the API run on different sites, so outside `dev` the session cookie is set with `SameSite=None; Secure`. That means the API must be served over HTTPS in production, and the dashboard's origin must be listed in `CORS_ORIGINS`. Requests from any other origin get `403`. The Android library sends no `Origin` header, so it isn't affected.
+
 ## Running
 
 Building needs JDK 11 (Gradle 6.3).
@@ -58,8 +63,8 @@ On Heroku, the `Procfile` runs the shadow jar and `app.json` provisions PostgreS
 | `GET`    | `/pages`      | none  | List pages |
 | `POST`   | `/pages`      | login | Create a page `{"name": "..."}`; the caller becomes its owner |
 | `DELETE` | `/pages`      | owner | Delete a page and its views `{"id": "...", "name": ""}` |
-| `GET`    | `/stats`      | none  | Plain-text summary |
-| `GET`    | `/stats/json` | none  | All views and pages as JSON |
+| `GET`    | `/stats`      | login | Plain-text summary |
+| `GET`    | `/stats/json` | login | All views and pages as JSON |
 | `POST`   | `/register`   | none  | Form fields: `email`, `password`, `displayName` |
 | `POST`   | `/login`      | none  | Form fields: `userId` (email), `password` |
 | `GET`    | `/logout`     | none  | Clear the session |

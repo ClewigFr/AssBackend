@@ -48,7 +48,13 @@ fun Application.installModule() {
 
     install(Sessions) {
         cookie<ASSSession>("MY_SESSION") {
-            cookie.extensions["SameSite"] = "lax"
+            if (isDev) {
+                cookie.extensions["SameSite"] = "lax"
+            } else {
+                // The dashboard is served from another site, so the cookie must be sent cross-site (HTTPS only).
+                cookie.extensions["SameSite"] = "None"
+                cookie.secure = true
+            }
             // Sign the cookie so a client cannot forge a session for another user.
             transform(SessionTransportTransformerMessageAuthentication(sessionSignKey))
         }
@@ -62,7 +68,11 @@ fun Application.installModule() {
         header(HttpHeaders.Authorization)
         header("MyCustomHeader")
         allowCredentials = true
-        anyHost() // @TODO: Don't do this in production if possible. Try to limit it.
+        // Only the dashboard origins may make credentialed requests (CORS_ORIGINS, comma-separated).
+        corsOrigins.forEach { origin ->
+            val (scheme, host) = origin.split("://", limit = 2)
+            host(host, schemes = listOf(scheme))
+        }
     }
 
     install(ContentNegotiation) {
@@ -103,6 +113,13 @@ private val Application.sessionSignKey: ByteArray
             else -> error("SESSION_SIGN_KEY must be set in production")
         }
     }
+
+/**
+ * Origins allowed by CORS, e.g. "https://dashboard.example.com,http://localhost:8080".
+ */
+private val Application.corsOrigins: List<String>
+    get() = environment.config.property("ktor.security.cors_origins").getString()
+        .split(',').map { it.trim().trimEnd('/') }.filter { it.contains("://") }
 
 data class MustacheUser(val id: Int, val name: String)
 
