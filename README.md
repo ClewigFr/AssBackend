@@ -69,7 +69,7 @@ Measured locally with ApacheBench (H2 in memory, so absolute numbers will differ
 | | Before | After |
 |---|---|---|
 | `POST /views` (20 views per request, 50 concurrent) | 1,117 req/s, p99 156 ms | **4,722 req/s** (≈94,000 views/s), p99 62 ms |
-| Stats with ~140k views stored (`GET /stats/json`, now `/apps/{app}/stats`) | 16 req/s, 17.5 MB per response | **264 req/s, 248 bytes** |
+| Stats with ~140k views stored (one year, with comparison) | 16 req/s, 17.5 MB per response | **321 req/s, ~1 KB** (cached; 18 req/s when every request recomputes) |
 | Server memory after the load | 5.3 GB | **335 MB** |
 
 ### Cookies across sites
@@ -128,9 +128,29 @@ On Heroku, the `Procfile` runs the shadow jar and `app.json` provisions PostgreS
 | `DELETE` | `/apps/{app}` | owner | Delete the application, its pages and their views → `204` |
 | `POST`   | `/apps/{app}/pages` | owner | Add a page `{"name"}` → `201 {"id","name"}`. The id is what the app passes to `logScreen` |
 | `DELETE` | `/apps/{app}/pages/{page}` | owner | Delete a page and its views → `204` |
-| `GET`    | `/apps/{app}/stats` | owner | Aggregated stats: `{"events","sessions","pages":[{"id","name","views"}],"days":[{"day","events","sessions"}]}`. `?tz=<minutes east of UTC>` sets the time zone for `day` (days since 1970-01-01) |
+| `GET`    | `/apps/{app}/stats` | owner | Stats for a period, see below |
 
 Another user's application answers `404`, exactly like one that doesn't exist.
+
+### Stats
+
+`GET /apps/{app}/stats?period=day|week|month|year&offset=0&tz=<minutes east of UTC>`
+
+| `period` | Range (in the viewer's time zone) | Slots |
+|---|---|---|
+| `day` | today | 24 hours |
+| `week` (default) | the last 7 days, today included | 7 days |
+| `month` | the last 30 days | 30 days |
+| `year` | the last 12 calendar months, the current one included | 12 months |
+
+`offset=-1` is the period before, `-2` the one before that, and so on (up to `-1000`).
+
+The response has:
+- `current` and `previous` (the period just before, of the same length): `views`, `sessions`, `pagesPerSession`, `avgSessionMs` (time between the first and last view of a session; a single-view session counts as 0), and `bounceRate` (share of sessions with a single view);
+- `buckets`: `start` (epoch ms), `views` and `sessions` per slot. A session is counted in the slot where it started, so slots add up exactly;
+- `pages`: every page of the application with its `views` and the `sessions` that saw it, busiest first.
+
+There is no "users" figure: the library only knows a random session id per app launch, and nothing identifies a person or a device.
 
 ### Applications
 

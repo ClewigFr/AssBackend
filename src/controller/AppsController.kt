@@ -12,7 +12,9 @@ import com.ass.model.AppsOut
 import com.ass.model.NameIn
 import com.ass.model.PageOut
 import com.ass.model.User
+import com.ass.stats.MAX_PERIOD_OFFSET
 import com.ass.stats.MAX_TZ_OFFSET_MS
+import com.ass.stats.Period
 import com.ass.stats.StatsService
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receiveNullable
@@ -44,7 +46,7 @@ const val MAX_NAME_LENGTH = 255
  * DELETE /apps/{app}                    -> 204 (its pages and views too)
  * POST   /apps/{app}/pages {"name"}     -> 201 {id,name}
  * DELETE /apps/{app}/pages/{page}       -> 204 (its views too)
- * GET    /apps/{app}/stats?tz=<minutes> -> aggregated stats
+ * GET    /apps/{app}/stats?period=day|week|month|year&offset=0&tz=<minutes> -> stats of a period
  *
  * Another user's application answers 404, exactly like a missing one.
  */
@@ -103,11 +105,14 @@ fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService) {
             get("/stats") {
                 val user = requireUser(db) ?: return@get
                 val app = ownedApp(db, user) ?: return@get
-                val tzMs = (call.request.queryParameters["tz"]?.toLongOrNull() ?: 0) * 60_000
-                if (tzMs !in -MAX_TZ_OFFSET_MS..MAX_TZ_OFFSET_MS) {
-                    return@get call.respond(HttpStatusCode.BadRequest, "invalid tz")
+                val query = call.request.queryParameters
+                val tzMs = (query["tz"]?.toLongOrNull() ?: 0) * 60_000
+                val period = Period.parse(query["period"])
+                val offset = query["offset"]?.toIntOrNull() ?: 0
+                if (tzMs !in -MAX_TZ_OFFSET_MS..MAX_TZ_OFFSET_MS || period == null || offset !in -MAX_PERIOD_OFFSET..0) {
+                    return@get call.respond(HttpStatusCode.BadRequest, "invalid tz, period (day|week|month|year) or offset (<= 0)")
                 }
-                call.respond(statsService.compute(app.id, tzMs))
+                call.respond(statsService.compute(app.id, period, offset, tzMs))
             }
 
             post("/pages") {

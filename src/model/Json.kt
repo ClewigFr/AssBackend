@@ -49,12 +49,35 @@ data class PagesOut(val pages: List<PageOut>)
 data class AppPagesOut(val app: AppOut, val pages: List<PageOut>)
 
 @Serializable
-data class PageStat(val id: JsonUUID, val name: String, val views: Long)
+data class PageStat(val id: JsonUUID, val name: String, val views: Long, val sessions: Long)
 
-/** Views on one calendar day; [day] is the number of days since 1970-01-01 in the requested time zone. */
+/** Headline numbers for a period. Durations are in ms; a single-view session lasts 0 ms. */
 @Serializable
-data class DayStat(val day: Long, val events: Long, val sessions: Long)
+data class Summary(
+    val views: Long,
+    val sessions: Long,
+    val pagesPerSession: Double,
+    val avgSessionMs: Long,
+    val bounceRate: Double
+)
 
-/** Aggregated statistics: the size depends on the number of pages and days, not on the number of views. */
+/** One time slot: [start] is its first instant (epoch ms). Sessions are counted in the slot where they started. */
 @Serializable
-data class StatsOut(val events: Long, val sessions: Long, val pages: List<PageStat>, val days: List<DayStat>)
+data class Bucket(val start: Long, val views: Long, val sessions: Long)
+
+/**
+ * Stats of one application over [from, to) (epoch ms), with the same numbers for the
+ * previous period of equal length, to show trends.
+ */
+@Serializable
+data class PeriodStats(
+    val period: String,
+    val granularity: String,
+    val offset: Int,
+    val from: Long,
+    val to: Long,
+    val current: Summary,
+    val previous: Summary,
+    val buckets: List<Bucket>,
+    val pages: List<PageStat>
+)

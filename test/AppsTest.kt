@@ -2,7 +2,7 @@ package com.ass
 
 import com.ass.model.AppPagesOut
 import com.ass.model.AppsOut
-import com.ass.model.StatsOut
+import com.ass.model.PeriodStats
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
@@ -75,8 +75,8 @@ class AppsTest {
         call(HttpMethod.Post, "/views", json = """{"app":"$app","pageViews":[${viewJson(home)},${viewJson(cart)}]}""")
         awaitIngested()
         assertEquals(HttpStatusCode.NoContent, call(HttpMethod.Delete, "/apps/$app/pages/$home", alice).status)
-        val stats = Json.decodeFromString<StatsOut>(call(HttpMethod.Get, "/apps/$app/stats", alice).bodyAsText())
-        assertEquals(1, stats.events)
+        val stats = Json.decodeFromString<PeriodStats>(call(HttpMethod.Get, "/apps/$app/stats", alice).bodyAsText())
+        assertEquals(1, stats.current.views)
         assertEquals(listOf("cart"), stats.pages.map { it.name })
         // Views for the deleted page are now rejected
         assertEquals(HttpStatusCode.BadRequest, call(HttpMethod.Post, "/views", json = """{"pageViews":[${viewJson(home)}]}""").status)
@@ -117,6 +117,6 @@ class ViewsWithAppTest {
         assertEquals(HttpStatusCode.OK, call(HttpMethod.Post, "/views", json = """{"pageViews":[${viewJson(page)}]}""").status)
         awaitIngested()
         // The view is still attributed to the page's application
-        assertEquals(1, Json.decodeFromString<StatsOut>(call(HttpMethod.Get, "/apps/$app/stats", alice).bodyAsText()).events)
+        assertEquals(1, Json.decodeFromString<PeriodStats>(call(HttpMethod.Get, "/apps/$app/stats", alice).bodyAsText()).current.views)
     }
 }
