@@ -10,6 +10,7 @@ Everything is set through environment variables, which are read in `resources/ap
 |---------------------|-----------------|--------------------|------------------------------------------|
 | `SESSION_SIGN_KEY`  | **yes, in prod**| random (dev only)  | Hex key used to sign session cookies     |
 | `CORS_ORIGINS`      | yes, in prod    | `http://localhost:8080` | Comma-separated dashboard origins allowed to call the API with cookies, e.g. `https://ass-dashboard.example.com` |
+| `REGISTRATION_OPEN` | no              | `true` in dev, `false` otherwise | Allow `POST /register`. Every account can read all stats, so keep it closed in production: set it to `true` only while you create accounts |
 | `JDBC_DATABASE_URL` | yes, in prod    | in-memory H2       | Database URL (PostgreSQL in prod)        |
 | `KTOR_ENV`          | no              | `dev`              | `dev` uses H2; any other value uses PostgreSQL |
 | `PORT`              | no              | `8080`             | HTTP port                                |
@@ -36,6 +37,14 @@ Things to know:
 - **Changing the key logs every user out**, because existing cookies no longer verify. Changing it is also how you invalidate all sessions at once if the key leaks.
 - In `dev`, if no key is set, a random one is generated on every start, so restarting the server logs everyone out.
 - Use the same key on every instance when you run more than one dyno or container.
+
+### Account security
+
+- **Sessions expire after 7 days**, checked on the server. A stolen cookie stops working after that, even though it's signed.
+- **Brute-force protection:** after 5 wrong passwords, an account refuses logins for 15 minutes (`429`). The counter is kept in memory, per server instance.
+- **Registration is closed in production by default.** To create an account: set `REGISTRATION_OPEN=true`, register, then unset it and restart.
+- Login takes the same time whether or not the email exists, so it doesn't reveal which accounts exist.
+- `POST /views` accepts at most 5000 views per request. Bigger batches get `400`.
 
 ### Cookies across sites
 

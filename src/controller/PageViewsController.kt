@@ -38,7 +38,8 @@ fun Routing.pageViews() {
             // A body that can't be parsed is the client's fault: answer 400 so it drops the
             // batch instead of retrying it forever (the Android client retries on 5xx).
             val post = call.receiveOrNull<PostPageViews>()
-            if (post == null) {
+            val size = (post?.pageViews as List<*>?)?.size ?: 0
+            if (post == null || size > MAX_VIEWS_PER_REQUEST) {
                 call.respond(HttpStatusCode.BadRequest)
             } else {
                 call.respond(addPageViews(post))
@@ -46,6 +47,9 @@ fun Routing.pageViews() {
         }
     }
 }
+
+/** Largest batch accepted, to bound memory and transaction size (the Android client sends ~20). */
+const val MAX_VIEWS_PER_REQUEST = 5000
 
 /** Oldest view accepted, as ms elapsed: the client may keep failed batches on disk for a while. */
 const val MAX_VIEW_AGE_MS = 365L * 24 * 60 * 60 * 1000

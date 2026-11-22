@@ -40,6 +40,8 @@ repositories {
 }
 
 dependencies {
+    // Force patched Netty (Ktor 1.6.8 pulls 4.1.74, which has known CVEs incl. HTTP/2 Rapid Reset)
+    implementation platform("io.netty:netty-bom:4.1.141.Final")
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
     implementation "io.ktor:ktor-server-netty:$ktor_version"
     implementation "ch.qos.logback:logback-classic:$logback_version"

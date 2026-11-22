@@ -1,5 +1,6 @@
 package com.ass
 
+import com.ass.auth.LoginThrottle
 import io.ktor.config.MapApplicationConfig
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -16,14 +17,18 @@ import java.util.UUID
 const val DASHBOARD = "http://localhost:8080"
 
 /** Run [test] against the real module with a fresh in-memory database. */
-fun withServer(test: TestApplicationEngine.() -> Unit) = withApplication(createTestEnvironment {
-    config = MapApplicationConfig(
-        "ktor.environment" to "dev",
-        "ktor.deployment.database_url" to "jdbc:h2:mem:${UUID.randomUUID()};DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
-        "ktor.security.cors_origins" to DASHBOARD
-    )
-    module { module() }
-}, test = test)
+fun withServer(vararg extraConfig: Pair<String, String>, test: TestApplicationEngine.() -> Unit) {
+    LoginThrottle.reset()
+    withApplication(createTestEnvironment {
+        config = MapApplicationConfig(
+            "ktor.environment" to "dev",
+            "ktor.deployment.database_url" to "jdbc:h2:mem:${UUID.randomUUID()};DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
+            "ktor.security.cors_origins" to DASHBOARD,
+            *extraConfig
+        )
+        module { module() }
+    }, test = test)
+}
 
 fun TestApplicationRequest.form(vararg fields: Pair<String, String>) {
     addHeader(HttpHeaders.ContentType, ContentType.Application.FormUrlEncoded.toString())

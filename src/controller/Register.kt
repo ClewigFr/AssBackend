@@ -1,6 +1,8 @@
 package com.ass.controller
 
-import com.ass.ASSSession
+import com.ass.auth.currentUser
+import com.ass.auth.startSession
+import com.ass.registrationOpen
 import com.ass.dao.createUser
 import com.ass.dao.fetchUser
 import com.ass.dao.userNameValid
@@ -16,9 +18,6 @@ import io.ktor.routing.Route
 import io.ktor.routing.get
 import io.ktor.routing.post
 import io.ktor.routing.route
-import io.ktor.sessions.get
-import io.ktor.sessions.sessions
-import io.ktor.sessions.set
 
 /**
  * Register routes for user registration in the [Register] route (/register)
@@ -36,7 +35,10 @@ fun Route.register() {
     route("/register") {
         post {
             // get current from session data if any
-            val user = call.sessions.get<ASSSession>()?.let { fetchUser(it.userId) }
+            if (!application.registrationOpen) {
+                return@post call.respond(HttpStatusCode.Forbidden, "Registration is closed")
+            }
+            val user = call.currentUser()
             // user already logged in, redirect to user page.
             if (user != null) return@post call.respond("Logged")
 
@@ -67,7 +69,7 @@ fun Route.register() {
                         return@post
                     }
 
-                    call.sessions.set(ASSSession(email))
+                    call.startSession(email)
                     call.respond(HttpStatusCode.Created, "User $email created")
                 }
             }
@@ -78,7 +80,7 @@ fun Route.register() {
          * If the user is already logged, it redirects the client to the [UserPage] instead.
          */
         get {
-            val user = call.sessions.get<ASSSession>()?.let { fetchUser(it.userId) }
+            val user = call.currentUser()
             if (user != null) {
                 call.respond("User ${user.email}")
             } else {

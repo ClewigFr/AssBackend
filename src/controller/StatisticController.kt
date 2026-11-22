@@ -2,13 +2,10 @@ package com.ass.controller
 
 import com.ass.model.PageView
 import com.ass.model.toPageViewsJson
-import com.ass.ASSSession
-import com.ass.dao.fetchUser
+import com.ass.auth.currentUser
 import io.ktor.application.ApplicationCall
 import io.ktor.application.call
 import io.ktor.http.HttpStatusCode
-import io.ktor.sessions.get
-import io.ktor.sessions.sessions
 import io.ktor.response.respond
 import io.ktor.routing.Routing
 import io.ktor.routing.get
@@ -65,8 +62,7 @@ fun Routing.stats() {
     }
 }
 
-private fun ApplicationCall.isLoggedIn() =
-    sessions.get<ASSSession>()?.let { fetchUser(it.userId) } != null
+private fun ApplicationCall.isLoggedIn() = currentUser() != null
 
 /**
  * Fetch all Stats

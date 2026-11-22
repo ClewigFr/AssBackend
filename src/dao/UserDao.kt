@@ -11,11 +11,18 @@ fun fetchUser(userId: String): User? = transaction {
  * Return the user if [password] matches, upgrading a legacy hash to bcrypt on success.
  */
 fun verifyUser(userId: String, password: String): User? = transaction {
-    val user = User.find { Users.email eq userId }.firstOrNull() ?: return@transaction null
+    val user = User.find { Users.email eq userId }.firstOrNull()
+    if (user == null) {
+        // Same bcrypt cost as a real check, so response time doesn't reveal which emails exist
+        checkPassword(password, DUMMY_HASH)
+        return@transaction null
+    }
     if (!checkPassword(password, user.passwordHash)) return@transaction null
     if (!isBcryptHash(user.passwordHash)) user.passwordHash = hashPassword(password)
     user
 }
+
+private val DUMMY_HASH: String by lazy { hashPassword("not-a-real-password") }
 
 fun createUser(emailParam: String, displayNameParam: String, password: String) {
     transaction {

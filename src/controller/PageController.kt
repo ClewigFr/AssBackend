@@ -1,9 +1,8 @@
 package com.ass.controller
 
-import com.ass.ASSSession
+import com.ass.auth.currentUser
 import com.ass.dao.Pages
 import com.ass.dao.PagesViews
-import com.ass.dao.fetchUser
 import com.ass.model.Page
 import com.ass.model.PageJson
 import com.ass.model.toPageJson
@@ -14,8 +13,6 @@ import io.ktor.request.receiveOrNull
 import io.ktor.response.respond
 import io.ktor.response.respondText
 import io.ktor.routing.*
-import io.ktor.sessions.get
-import io.ktor.sessions.sessions
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -36,7 +33,7 @@ fun Routing.pages() {
         //   "name":"pageName"
         // }
         post {
-            val user = call.sessions.get<ASSSession>()?.let { fetchUser(it.userId) }
+            val user = call.currentUser()
 
             if (user == null) {
                 call.respondText("not logged", ContentType.Text.Plain, HttpStatusCode.Unauthorized)
@@ -57,7 +54,7 @@ fun Routing.pages() {
         }
 
         delete {
-            val user = call.sessions.get<ASSSession>()?.let { fetchUser(it.userId) }
+            val user = call.currentUser()
 
             if (user == null) {
                 call.respondText("not logged", ContentType.Text.Plain, HttpStatusCode.Unauthorized)

@@ -1,7 +1,9 @@
 package com.ass.controller
 
 import com.ass.ASSSession
-import com.ass.dao.fetchUser
+import com.ass.auth.LoginThrottle
+import com.ass.auth.currentUser
+import com.ass.auth.startSession
 import com.ass.dao.userNameValid
 import com.ass.dao.verifyUser
 import io.ktor.application.call
@@ -14,9 +16,7 @@ import io.ktor.routing.get
 import io.ktor.routing.post
 import io.ktor.routing.route
 import io.ktor.sessions.clear
-import io.ktor.sessions.get
 import io.ktor.sessions.sessions
-import io.ktor.sessions.set
 
 /**
  * Registers the [Login] and [Logout] routes '/login' and '/logout'.
@@ -27,7 +27,7 @@ fun Route.login() {
      */
     route("/login") {
         get {
-            val user = call.sessions.get<ASSSession>()?.let { fetchUser(it.userId) }
+            val user = call.currentUser()
 
             if (user != null) {
                 call.respond("Logged")
@@ -44,6 +44,10 @@ fun Route.login() {
             val userId = post["userId"] ?: ""
             val password = post["password"] ?: ""
 
+            if (LoginThrottle.isLocked(userId)) {
+                return@post call.respond(HttpStatusCode.TooManyRequests, "Too many failed attempts, try again later")
+            }
+
             val login = when {
                 userId.length < 4 -> null
                 password.length < 6 -> null
@@ -52,9 +56,11 @@ fun Route.login() {
             }
 
             if (login == null) {
+                LoginThrottle.recordFailure(userId)
                 call.respond(HttpStatusCode.Unauthorized, "Invalid username or password")
             } else {
-                call.sessions.set(ASSSession(login.email))
+                LoginThrottle.recordSuccess(userId)
+                call.startSession(login.email)
                 call.respond("Logged")
             }
         }

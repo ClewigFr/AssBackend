@@ -87,6 +87,14 @@ fun Application.installModule() {
     }
 }
 
+/**
+ * Whether anyone may create an account. Every account can read all stats, so this is
+ * closed by default outside dev: set REGISTRATION_OPEN=true to create accounts, then unset it.
+ */
+val Application.registrationOpen: Boolean
+    get() = environment.config.propertyOrNull("ktor.security.registration_open")?.getString()?.toBoolean()
+        ?: isDev
+
 // Routing init
 fun Application.routingInitialization() {
     routing {
@@ -127,7 +135,8 @@ private val Application.corsOrigins: List<String>
     get() = environment.config.property("ktor.security.cors_origins").getString()
         .split(',').map { it.trim().trimEnd('/') }.filter { it.contains("://") }
 
-data class ASSSession(val userId: String = "")
+/** Signed session cookie content. [issuedAt] lets the server expire sessions (see SESSION_MAX_AGE_MS). */
+data class ASSSession(val userId: String = "", val issuedAt: Long = 0)
 
 val Application.envKind get() = environment.config.property("ktor.environment").getString()
 val Application.isDev get() = envKind == "dev"
