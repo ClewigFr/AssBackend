@@ -41,19 +41,46 @@ Things to know:
 
 The dashboard and the API run on different sites, so outside `dev` the session cookie is set with `SameSite=None; Secure`. That means the API must be served over HTTPS in production, and the dashboard's origin must be listed in `CORS_ORIGINS`. Requests from any other origin get `403`. The Android library sends no `Origin` header, so it isn't affected.
 
-## Running
+## Running in dev
 
-Building needs JDK 11 (Gradle 6.3).
+Requirements: **JDK 11**. Gradle 6.3 doesn't run on JDK 17+. In dev, no environment variable is needed: the server uses an in-memory H2 database and a random session key.
+
+1. Start the server on port 8099. The dashboard's dev server already uses 8080, and the dashboard expects the API on 8099.
+   ```bash
+   ./gradlew run --args='-port=8099'
+   ```
+   With `./gradlew run`, the `PORT` variable is ignored (Gradle doesn't pass it to the server), so use `-port` as shown. `PORT` does work with the jar: `PORT=8099 java -jar build/libs/anonymoussimplestats-0.0.1-all.jar`.
+
+   If your default JDK isn't 11, set `JAVA_HOME` first, for example:
+   ```bash
+   export JAVA_HOME=$(/usr/libexec/java_home -v 11)
+   ```
+2. In another terminal, add test data: one account, three pages and views spread over three days. The login and password are at the top of the script.
+   ```bash
+   scripts/seed-dev.sh
+   ```
+3. Start the dashboard (AssFrontEnd) with `npm run dev`, open http://localhost:8080 and log in with the seeded account.
+
+Things to know:
+- The H2 database lives in memory, so **every restart wipes the data and logs everyone out**. Run `scripts/seed-dev.sh` again after each restart.
+- `http://localhost:8080` is already in the default `CORS_ORIGINS`. If you serve the dashboard elsewhere, set `CORS_ORIGINS`.
+- To point the Android sample app at your machine, use `AssConfig(endpoint = "http://10.0.2.2:8099")` from the emulator. Android blocks plain HTTP by default, so you'll need to allow cleartext traffic for that host.
+
+### Tests
 
 ```bash
-./gradlew run
+./gradlew test
 ```
+
+Each test starts the real module against a fresh in-memory database. No server needs to be running.
+
+## Production build
 
 ```bash
 ./gradlew shadowJar && java -jar build/libs/anonymoussimplestats-0.0.1-all.jar
 ```
 
-On Heroku, the `Procfile` runs the shadow jar and `app.json` provisions PostgreSQL.
+On Heroku, the `Procfile` runs the shadow jar and `app.json` provisions PostgreSQL. See [Configuration](#configuration) for the variables that are required in production.
 
 ## API
 
