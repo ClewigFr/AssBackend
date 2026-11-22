@@ -9,12 +9,14 @@ import com.ass.model.PageJson
 import com.ass.model.toPageJson
 import io.ktor.application.call
 import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
 import io.ktor.request.receive
 import io.ktor.response.respond
 import io.ktor.response.respondText
 import io.ktor.routing.*
 import io.ktor.sessions.get
 import io.ktor.sessions.sessions
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.transactions.transaction
 
@@ -43,7 +45,10 @@ fun Routing.pages() {
             } else {
                 val post = call.receive<PageJson>()
                 val page = transaction {
-                    Page.new { name = post.name }
+                    Page.new {
+                        name = post.name
+                        owner = user
+                    }
                 }
                 val message = "Page : ${page.name}, id: ${page.id}"
                 call.respondText(message, contentType = ContentType.Text.Plain)
@@ -57,13 +62,26 @@ fun Routing.pages() {
                 call.respondText("not logged", contentType = ContentType.Text.Plain)
             } else {
                 val post = call.receive<PageJson>()
-                transaction {
-                    Page.findById(post.id)?.let {
-                        PagesViews.deleteWhere { PagesViews.page eq it.id }
-                        Pages.deleteWhere { Pages.id eq it.id }
+                val deleted = transaction {
+                    val page = Page.findById(post.id)
+                    // Only the page's owner may delete it (and its views).
+                    if (page == null || page.owner?.id != user.id) {
+                        false
+                    } else {
+                        PagesViews.deleteWhere { PagesViews.page eq page.id }
+                        Pages.deleteWhere { Pages.id eq page.id }
+                        true
                     }
                 }
-                call.respondText("remove ${post.id}", contentType = ContentType.Text.Plain)
+                if (deleted) {
+                    call.respondText("remove ${post.id}", contentType = ContentType.Text.Plain)
+                } else {
+                    call.respondText(
+                        "page not found",
+                        contentType = ContentType.Text.Plain,
+                        status = HttpStatusCode.NotFound
+                    )
+                }
             }
         }
     }

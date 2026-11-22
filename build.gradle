@@ -1,6 +1,7 @@
 buildscript {
     repositories {
-        jcenter()
+        gradlePluginPortal()
+        mavenCentral()
     }
     
     dependencies {
@@ -35,8 +36,7 @@ sourceSets {
 
 repositories {
     mavenLocal()
-    jcenter()
-    maven { url 'https://kotlin.bintray.com/ktor' }
+    mavenCentral()
 }
 
 dependencies {
@@ -53,6 +53,7 @@ dependencies {
     implementation "io.ktor:ktor-client-core-jvm:$ktor_version"
     implementation "io.ktor:ktor-client-jetty:$ktor_version"
     implementation "io.ktor:ktor-auth:$ktor_version"
+    implementation "org.mindrot:jbcrypt:0.4"
 
     testImplementation "io.ktor:ktor-server-tests:$ktor_version"
 

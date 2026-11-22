@@ -8,8 +8,6 @@ import com.ass.routing.root
 import com.github.mustachejava.DefaultMustacheFactory
 import io.ktor.application.Application
 import io.ktor.application.install
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.jetty.Jetty
 import io.ktor.features.CORS
 import io.ktor.features.ContentNegotiation
 import io.ktor.gson.gson
@@ -17,16 +15,14 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.mustache.Mustache
 import io.ktor.routing.routing
-import io.ktor.server.engine.embeddedServer
-import io.ktor.server.netty.Netty
+import io.ktor.sessions.SessionTransportTransformerMessageAuthentication
 import io.ktor.sessions.Sessions
 import io.ktor.sessions.cookie
 import io.ktor.util.hex
 import org.jetbrains.exposed.sql.Database
-import org.jetbrains.exposed.sql.SchemaUtils.create
+import org.jetbrains.exposed.sql.SchemaUtils.createMissingTablesAndColumns
 import org.jetbrains.exposed.sql.transactions.transaction
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
+import java.security.SecureRandom
 import kotlin.collections.set
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
@@ -34,39 +30,13 @@ fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
 @Suppress("unused") // Referenced in application.conf
 @kotlin.jvm.JvmOverloads
 fun Application.module(testing: Boolean = false) {
-
-    val port = Integer.valueOf(environment.config.property("ktor.deployment.port").getString())
     val databaseUrl = environment.config.property("ktor.deployment.database_url").getString()
-    embeddedServer(
-        Netty,
-        watchPaths = listOf("AssBackend"),
-        port = port,
-        module = Application::mainModule
-    ).apply {
-        when {
-            isDev -> {
-                Database.connect(
-                    databaseUrl,
-                    driver = "org.h2.Driver"
-                )
-            }
-            isProd -> {
-                Database.connect(
-                    databaseUrl, driver = "org.postgresql.Driver"
-                )
-            }
-        }
-        databaseInitialization()
-        start(wait = true)
-    }
-}
-
-// Main module
-fun Application.mainModule() {
+    Database.connect(
+        databaseUrl,
+        driver = if (isDev) "org.h2.Driver" else "org.postgresql.Driver"
+    )
+    databaseInitialization()
     installModule()
-
-    val client = HttpClient(Jetty) {
-    }
     routingInitialization()
 }
 
@@ -79,6 +49,8 @@ fun Application.installModule() {
     install(Sessions) {
         cookie<ASSSession>("MY_SESSION") {
             cookie.extensions["SameSite"] = "lax"
+            // Sign the cookie so a client cannot forge a session for another user.
+            transform(SessionTransportTransformerMessageAuthentication(sessionSignKey))
         }
     }
 
@@ -106,41 +78,31 @@ fun Application.routingInitialization() {
         pageViews()
         pages()
         stats()
-        login(hashFunction)
-        register(hashFunction)
+        login()
+        register()
     }
 }
 
-// Routing init
+// Database init: also adds columns introduced after the tables were first created
 fun Application.databaseInitialization() {
     transaction {
-        create(Pages)
-        create(PagesViews)
-        create(Users)
+        createMissingTablesAndColumns(Users, Pages, PagesViews)
     }
 }
 
 /**
- * Hardcoded secret hash key used to hash the passwords, and to authenticate the sessions.
+ * Key used to sign session cookies. Must be set through SESSION_SIGN_KEY (hex, 32+ bytes) outside dev;
+ * in dev a random key is generated on each start, which logs everyone out on restart.
  */
-val hashKey = hex("6819b57a326945c1968f45236589")
-
-/**
- * HMac SHA1 key spec for the password hashing.
- */
-val hmacKey = SecretKeySpec(hashKey, "HmacSHA1")
-
-/**
- * Method that hashes a [password] by using the globally defined secret key [hmacKey].
- */
-fun hash(password: String): String {
-    val hmac = Mac.getInstance("HmacSHA1")
-    hmac.init(hmacKey)
-    return hex(hmac.doFinal(password.toByteArray(Charsets.UTF_8)))
-}
-
-// Provides a hash function to be used when registering the resources.
-val hashFunction = { s: String -> hash(s) }
+private val Application.sessionSignKey: ByteArray
+    get() {
+        val configured = environment.config.propertyOrNull("ktor.security.session_sign_key")?.getString()
+        return when {
+            !configured.isNullOrBlank() -> hex(configured)
+            isDev -> ByteArray(32).also { SecureRandom().nextBytes(it) }
+            else -> error("SESSION_SIGN_KEY must be set in production")
+        }
+    }
 
 data class MustacheUser(val id: Int, val name: String)
 

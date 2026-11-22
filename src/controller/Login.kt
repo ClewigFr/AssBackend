@@ -20,7 +20,7 @@ import io.ktor.sessions.set
 /**
  * Registers the [Login] and [Logout] routes '/login' and '/logout'.
  */
-fun Route.login(hash: (String) -> String) {
+fun Route.login() {
     /**
      * A GET request to the [Login], would respond with the login page
      */
@@ -47,7 +47,7 @@ fun Route.login(hash: (String) -> String) {
                 userId.length < 4 -> null
                 password.length < 6 -> null
                 !userNameValid(userId) -> null
-                else -> verifyUser(userId, hash(password))
+                else -> verifyUser(userId, password)
             }
 
             if (login == null) {

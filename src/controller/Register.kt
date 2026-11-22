@@ -22,7 +22,7 @@ import io.ktor.sessions.set
 /**
  * Register routes for user registration in the [Register] route (/register)
  */
-fun Route.register(hashFunction: (String) -> String) {
+fun Route.register() {
     /**
      * A POST request to the [Register] route, will try to create a new user.
      *
@@ -52,10 +52,8 @@ fun Route.register(hashFunction: (String) -> String) {
                 !userNameValid(email) -> call.respond("Login should only contains digits, letters, dots or underscores")
                 fetchUser(email) != null ->call.respond("User with the following login is already registered")
                 else -> {
-                    val hash = hashFunction(password)
-
                     try {
-                        createUser(email, displayName, hash)
+                        createUser(email, displayName, password)
                     } catch (e: Throwable) {
                         when {
                             // NOTE: This is security issue that allows to enumerate/verify registered users. Do not do this in real app :)
@@ -65,6 +63,7 @@ fun Route.register(hashFunction: (String) -> String) {
                                 call.respond("Failed to register")
                             }
                         }
+                        return@post
                     }
 
                     call.sessions.set(ASSSession(email))

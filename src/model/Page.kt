@@ -10,6 +10,7 @@ class Page(id: EntityID<UUID>) : UUIDEntity(id) {
     companion object : UUIDEntityClass<Page>(Pages)
 
     var name by Pages.name
+    var owner by User optionalReferencedOn Pages.owner
 }
 
 data class PageJson(
