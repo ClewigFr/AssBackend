@@ -12,6 +12,11 @@ Everything is set through environment variables, which are read in `resources/ap
 | `CORS_ORIGINS`      | yes, in prod    | `http://localhost:8080` | Comma-separated dashboard origins allowed to call the API with cookies, e.g. `https://ass-dashboard.example.com` |
 | `REGISTRATION_OPEN` | no              | `true` in dev, `false` otherwise | Allow `POST /register`. Every account can read all stats, so keep it closed in production: set it to `true` only while you create accounts |
 | `JDBC_DATABASE_URL` | yes, in prod    | in-memory H2       | Database URL (PostgreSQL in prod)        |
+| `DB_POOL_SIZE`      | no              | `10`               | Database connections (and threads running queries) |
+| `FLUSH_INTERVAL_MS` | no              | `200`              | How often buffered page views are written to the database |
+| `INGEST_CAPACITY`   | no              | `500000`           | Max page views waiting to be written; beyond that `/views` answers `503` |
+| `VIEWS_RATE_LIMIT`  | no              | `600`              | Max `POST /views` per client IP per minute (`0` disables it) |
+| `STATS_CACHE_MS`    | no              | `5000`             | How long stats results are cached (`0` disables the cache) |
 | `KTOR_ENV`          | no              | `dev`              | `dev` uses H2; any other value uses PostgreSQL |
 | `PORT`              | no              | `8080`             | HTTP port                                |
 
@@ -45,6 +50,27 @@ Things to know:
 - **Registration is closed in production by default.** To create an account: set `REGISTRATION_OPEN=true`, register, then unset it and restart.
 - Login takes the same time whether or not the email exists, so it doesn't reveal which accounts exist.
 - `POST /views` accepts at most 5000 views per request. Bigger batches get `400`.
+
+### Performance
+
+The server is built to absorb large volumes of page views with little memory:
+
+- **Asynchronous writes:** `POST /views` checks the views, puts them in an in-memory buffer and answers immediately. A background task writes the buffer in batches (one `INSERT` for up to 5000 views) every `FLUSH_INTERVAL_MS`.
+  - **Trade-off:** if the process is killed abruptly (crash, `kill -9`), views not written yet are lost, at most `FLUSH_INTERVAL_MS` worth (200 ms by default). On a normal shutdown (`SIGTERM`, which is what Heroku sends), the buffer is written before the server stops.
+  - If the buffer is full (`INGEST_CAPACITY`), `/views` answers `503`, and the Android client retries later.
+- **Page ids are kept in memory**, so validating a view never queries the database.
+- **Connection pool** (HikariCP), with queries run on a dedicated thread pool of the same size, so a slow database never blocks request handling.
+- **Stats are computed in SQL** (counts per page and per day) and **cached** for `STATS_CACHE_MS`. The response size depends on the number of pages and days, not on the number of views.
+- **gzip** for responses over 1 KB, **per-IP rate limit** on `/views`, and logs written asynchronously at `INFO` level.
+- **JVM** (`Procfile`): `-XX:+UseSerialGC -XX:MaxRAMPercentage=75 -Xss512k`, tuned for small containers.
+
+Measured locally with ApacheBench (H2 in memory, so absolute numbers will differ on PostgreSQL):
+
+| | Before | After |
+|---|---|---|
+| `POST /views` (20 views per request, 50 concurrent) | 1,117 req/s, p99 156 ms | **4,722 req/s** (≈94,000 views/s), p99 62 ms |
+| `GET /stats/json` with ~140k views stored | 16 req/s, 17.5 MB per response | **264 req/s, 248 bytes** |
+| Server memory after the load | 5.3 GB | **335 MB** |
 
 ### Cookies across sites
 
@@ -95,12 +121,12 @@ On Heroku, the `Procfile` runs the shadow jar and `app.json` provisions PostgreS
 
 | Method   | Path          | Auth  | Description |
 |----------|---------------|-------|-------------|
-| `POST`   | `/views`      | none  | Ingest page views: `{"pageViews":[{"page","sessionId","timestamp"}]}`, where `timestamp` is ms elapsed since the view. Returns `200` if all were stored, `206` if some had an unknown page, `400` if none were stored. |
+| `POST`   | `/views`      | none  | Ingest page views: `{"pageViews":[{"page","sessionId","timestamp"}]}`, where `timestamp` is ms elapsed since the view. Returns `200` if all were accepted, `206` if some were rejected, `400` if none were, `429` if rate limited, `503` if the write buffer is full. |
 | `GET`    | `/pages`      | none  | List pages |
 | `POST`   | `/pages`      | login | Create a page `{"name": "..."}`; the caller becomes its owner |
 | `DELETE` | `/pages`      | owner | Delete a page and its views `{"id": "...", "name": ""}` |
 | `GET`    | `/stats`      | login | Plain-text summary |
-| `GET`    | `/stats/json` | login | All views and pages as JSON |
+| `GET`    | `/stats/json` | login | Aggregated stats: `{"events","sessions","pages":[{"id","name","views"}],"days":[{"day","events","sessions"}]}`. `?tz=<minutes east of UTC>` sets the time zone for `day` (days since 1970-01-01) |
 | `POST`   | `/register`   | none  | Form fields: `email`, `password`, `displayName` |
 | `POST`   | `/login`      | none  | Form fields: `userId` (email), `password` |
 | `GET`    | `/logout`     | none  | Clear the session |

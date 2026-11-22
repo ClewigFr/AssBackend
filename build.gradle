@@ -39,7 +39,11 @@ dependencies {
     implementation 'io.ktor:ktor-server-cors'
     implementation 'io.ktor:ktor-server-status-pages'
     implementation 'io.ktor:ktor-server-content-negotiation'
-    implementation 'io.ktor:ktor-serialization-gson'
+    implementation 'io.ktor:ktor-serialization-kotlinx-json'
+    implementation 'io.ktor:ktor-server-compression'
+    implementation 'io.ktor:ktor-server-rate-limit'
+    implementation 'io.ktor:ktor-server-forwarded-header'
+    implementation "com.zaxxer:HikariCP:$hikari_version"
     implementation "ch.qos.logback:logback-classic:$logback_version"
 
     implementation "org.jetbrains.exposed:exposed-core:$exposed_version"

@@ -31,7 +31,10 @@ class PagesTest {
         val alice = registerAndLogin("alice@x.io")
         val page = createPage(alice)
         call(HttpMethod.Post, "/views", json = """{"pageViews":[${viewJson(page)}]}""")
+        awaitIngested()
+        assertEquals("""{"events":1,"sessions":1,"pages":[{"id":"$page","name":"home","views":1}],"days":[]}""".let { it.substringBefore(",\"days\"") },
+            call(HttpMethod.Get, "/stats/json", alice).bodyAsText().substringBefore(",\"days\""))
         call(HttpMethod.Delete, "/pages", alice, json = """{"id":"$page","name":""}""")
-        assertEquals("""{"stats":[],"pages":[]}""", call(HttpMethod.Get, "/stats/json", alice).bodyAsText())
+        assertEquals("""{"events":0,"sessions":0,"pages":[],"days":[]}""", call(HttpMethod.Get, "/stats/json", alice).bodyAsText())
     }
 }

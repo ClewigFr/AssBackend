@@ -6,6 +6,7 @@ import com.ass.auth.currentUser
 import com.ass.auth.startSession
 import com.ass.dao.userNameValid
 import com.ass.dao.verifyUser
+import com.ass.db.Db
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receiveParameters
 import io.ktor.server.response.respond
@@ -19,13 +20,13 @@ import io.ktor.server.sessions.sessions
 /**
  * Registers the [Login] and [Logout] routes '/login' and '/logout'.
  */
-fun Route.login() {
+fun Route.login(db: Db) {
     /**
      * A GET request to the [Login], would respond with the login page
      */
     route("/login") {
         get {
-            val user = call.currentUser()
+            val user = call.currentUser(db)
 
             if (user != null) {
                 call.respond("Logged")
@@ -50,7 +51,7 @@ fun Route.login() {
                 userId.length < 4 -> null
                 password.length < 6 -> null
                 !userNameValid(userId) -> null
-                else -> verifyUser(userId, password)
+                else -> verifyUser(db, userId, password)
             }
 
             if (login == null) {

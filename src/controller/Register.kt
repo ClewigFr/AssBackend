@@ -6,7 +6,7 @@ import com.ass.registrationOpen
 import com.ass.dao.createUser
 import com.ass.dao.fetchUser
 import com.ass.dao.userNameValid
-import com.ass.model.User
+import com.ass.db.Db
 import io.ktor.server.application.log
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receiveParameters
@@ -19,7 +19,7 @@ import io.ktor.server.routing.route
 /**
  * Register routes for user registration in the [Register] route (/register)
  */
-fun Route.register() {
+fun Route.register(db: Db) {
     /**
      * A POST request to the [Register] route, will try to create a new user.
      *
@@ -35,7 +35,7 @@ fun Route.register() {
             if (!call.application.registrationOpen) {
                 return@post call.respond(HttpStatusCode.Forbidden, "Registration is closed")
             }
-            val user = call.currentUser()
+            val user = call.currentUser(db)
             // user already logged in, redirect to user page.
             if (user != null) return@post call.respond("Logged")
 
@@ -50,14 +50,14 @@ fun Route.register() {
                 password.length < 6 -> call.respond(HttpStatusCode.BadRequest, "Password should be at least 6 characters long")
                 email.length < 4 -> call.respond(HttpStatusCode.BadRequest, "Login should be at least 4 characters long")
                 !userNameValid(email) -> call.respond(HttpStatusCode.BadRequest, "Login should be a valid email address")
-                fetchUser(email) != null -> call.respond(HttpStatusCode.Conflict, "User with the following login is already registered")
+                fetchUser(db, email) != null -> call.respond(HttpStatusCode.Conflict, "User with the following login is already registered")
                 else -> {
                     try {
-                        createUser(email, displayName, password)
+                        createUser(db, email, displayName, password)
                     } catch (e: Throwable) {
                         when {
                             // NOTE: This is security issue that allows to enumerate/verify registered users. Do not do this in real app :)
-                            fetchUser(email) != null -> call.respond(HttpStatusCode.Conflict, "User with the following login is already registered")
+                            fetchUser(db, email) != null -> call.respond(HttpStatusCode.Conflict, "User with the following login is already registered")
                             else -> {
                                 call.application.log.error("Failed to register user", e)
                                 call.respond(HttpStatusCode.InternalServerError, "Failed to register")
@@ -77,7 +77,7 @@ fun Route.register() {
          * If the user is already logged, it redirects the client to the [UserPage] instead.
          */
         get {
-            val user = call.currentUser()
+            val user = call.currentUser(db)
             if (user != null) {
                 call.respond("User ${user.email}")
             } else {

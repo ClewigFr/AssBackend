@@ -12,6 +12,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.Parameters
 import io.ktor.http.contentType
+import io.ktor.server.application.Application
 import io.ktor.server.config.MapApplicationConfig
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
@@ -28,13 +29,24 @@ fun withServer(vararg extraConfig: Pair<String, String>, test: suspend Applicati
                 "ktor.environment" to "dev",
                 "ktor.deployment.database_url" to "jdbc:h2:mem:${UUID.randomUUID()};DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
                 "ktor.security.cors_origins" to DASHBOARD,
+                "ktor.performance.flush_interval_ms" to "10",
+                "ktor.performance.stats_cache_ms" to "0",
                 *extraConfig
             )
         }
-        application { module() }
+        application {
+            module()
+            apps[this@testApplication] = this
+        }
+        startApplication()
         test()
     }
 }
+
+private val apps = java.util.Collections.synchronizedMap(java.util.WeakHashMap<ApplicationTestBuilder, Application>())
+
+/** Wait until every accepted view has been written to the database. */
+suspend fun ApplicationTestBuilder.awaitIngested() = apps.getValue(this).attributes[IngestorKey].awaitIdle()
 
 suspend fun ApplicationTestBuilder.call(
     method: HttpMethod,

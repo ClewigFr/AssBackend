@@ -4,46 +4,94 @@ import com.ass.controller.*
 import com.ass.dao.Pages
 import com.ass.dao.PagesViews
 import com.ass.dao.Users
+import com.ass.db.Db
+import com.ass.ingest.PageCache
+import com.ass.ingest.ViewIngestor
 import com.ass.routing.root
-import com.google.gson.JsonParseException
+import com.ass.stats.StatsService
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.JsonConvertException
-import io.ktor.serialization.gson.gson
+import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationStopped
+import io.ktor.server.application.ApplicationStopping
 import io.ktor.server.application.install
 import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.plugins.ContentTransformationException
+import io.ktor.server.plugins.compression.Compression
+import io.ktor.server.plugins.compression.gzip
+import io.ktor.server.plugins.compression.minimumSize
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.cors.routing.CORS
+import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
+import io.ktor.server.plugins.origin
+import io.ktor.server.plugins.ratelimit.RateLimit
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.response.respond
 import io.ktor.server.routing.routing
 import io.ktor.server.sessions.SessionTransportTransformerMessageAuthentication
 import io.ktor.server.sessions.Sessions
 import io.ktor.server.sessions.cookie
+import io.ktor.util.AttributeKey
 import io.ktor.util.hex
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
-import org.jetbrains.exposed.v1.jdbc.Database
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
 import org.jetbrains.exposed.v1.jdbc.SchemaUtils
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.migration.jdbc.MigrationUtils
 import java.security.SecureRandom
+import kotlin.time.Duration.Companion.seconds
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
 
 @Suppress("unused") // Referenced in application.conf
 fun Application.module() {
     val databaseUrl = environment.config.property("ktor.deployment.database_url").getString()
-    Database.connect(
-        databaseUrl,
-        driver = if (isDev) "org.h2.Driver" else "org.postgresql.Driver"
+    val db = Db(
+        url = databaseUrl,
+        driver = if (databaseUrl.startsWith("jdbc:h2:")) "org.h2.Driver" else "org.postgresql.Driver",
+        poolSize = configInt("ktor.performance.db_pool_size", 10)
     )
-    databaseInitialization()
+    databaseInitialization(db)
+
+    val pageCache = PageCache(db)
+    runBlocking { pageCache.load() }
+    val ingestor = ViewIngestor(
+        db, this,
+        flushIntervalMs = configInt("ktor.performance.flush_interval_ms", 200).toLong(),
+        capacity = configInt("ktor.performance.ingest_capacity", 500_000)
+    )
+    attributes.put(IngestorKey, ingestor)
+
+    // Write buffered views before the database goes away
+    monitor.subscribe(ApplicationStopping) { runBlocking { ingestor.close() } }
+    monitor.subscribe(ApplicationStopped) { db.close() }
+
+    val statsService = StatsService(db, cacheMs = configInt("ktor.performance.stats_cache_ms", 5_000).toLong())
+
     installModule()
-    routingInitialization()
+    routing {
+        root()
+        pageViews(pageCache, ingestor, rateLimited = viewsRateLimit > 0)
+        pages(db, pageCache, statsService)
+        stats(db, statsService)
+        login(db)
+        register(db)
+    }
 }
+
+/** The ingestor of a running application (tests use it to wait for buffered writes). */
+val IngestorKey = AttributeKey<ViewIngestor>("ViewIngestor")
+
+private fun Application.configInt(path: String, default: Int) =
+    environment.config.propertyOrNull(path)?.getString()?.toIntOrNull() ?: default
+
+/** Max POST /views per client IP per minute; 0 disables the limit. */
+private val Application.viewsRateLimit get() = configInt("ktor.performance.views_rate_limit", 600)
 
 // Install module
 fun Application.installModule() {
@@ -86,11 +134,32 @@ fun Application.installModule() {
         exception<BadRequestException> { call, _ -> call.respond(HttpStatusCode.BadRequest) }
         exception<ContentTransformationException> { call, _ -> call.respond(HttpStatusCode.BadRequest) }
         exception<JsonConvertException> { call, _ -> call.respond(HttpStatusCode.BadRequest) }
-        exception<JsonParseException> { call, _ -> call.respond(HttpStatusCode.BadRequest) }
+        exception<SerializationException> { call, _ -> call.respond(HttpStatusCode.BadRequest) }
     }
 
     install(ContentNegotiation) {
-        gson {
+        json(Json {
+            ignoreUnknownKeys = true
+            explicitNulls = false
+        })
+    }
+
+    install(Compression) {
+        gzip { minimumSize(1024) }
+    }
+
+    if (!dev) {
+        // Behind Heroku's router, the last X-Forwarded-For entry is the real client IP
+        install(XForwardedHeaders) { useLastProxy() }
+    }
+
+    val limit = viewsRateLimit
+    if (limit > 0) {
+        install(RateLimit) {
+            register(VIEWS_RATE_LIMIT) {
+                rateLimiter(limit = limit, refillPeriod = 60.seconds)
+                requestKey { call -> call.request.origin.remoteHost }
+            }
         }
     }
 }
@@ -103,23 +172,13 @@ val Application.registrationOpen: Boolean
     get() = environment.config.propertyOrNull("ktor.security.registration_open")?.getString()?.toBoolean()
         ?: isDev
 
-// Routing init
-fun Application.routingInitialization() {
-    routing {
-        root()
-        pageViews()
-        pages()
-        stats()
-        login()
-        register()
-    }
-}
-
 // Database init: also adds columns introduced after the tables were first created
-fun Application.databaseInitialization() {
-    transaction {
+fun databaseInitialization(db: Db) {
+    transaction(db.database) {
         SchemaUtils.create(Users, Pages, PagesViews)
+        // Add missing columns and indexes, but never drop anything automatically
         MigrationUtils.statementsRequiredForDatabaseMigration(Users, Pages, PagesViews, withLogs = false)
+            .filterNot { it.trimStart().startsWith("DROP", ignoreCase = true) || it.contains(" DROP ", ignoreCase = true) }
             .forEach { exec(it) }
     }
 }

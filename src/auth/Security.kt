@@ -2,6 +2,7 @@ package com.ass.auth
 
 import com.ass.ASSSession
 import com.ass.dao.fetchUser
+import com.ass.db.Db
 import com.ass.model.User
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.sessions.get
@@ -21,10 +22,10 @@ fun ApplicationCall.startSession(email: String) {
  * The logged-in user, or null if there is no session, it has expired (or predates expiry
  * support), or the user no longer exists.
  */
-fun ApplicationCall.currentUser(now: Long = System.currentTimeMillis()): User? {
+suspend fun ApplicationCall.currentUser(db: Db, now: Long = System.currentTimeMillis()): User? {
     val session = sessions.get<ASSSession>() ?: return null
     if (!isSessionValid(session, now)) return null
-    return fetchUser(session.userId)
+    return fetchUser(db, session.userId)
 }
 
 fun isSessionValid(session: ASSSession, now: Long = System.currentTimeMillis()): Boolean =
