@@ -1,7 +1,8 @@
 package com.ass.dao
 
 import com.ass.model.User
-import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 
 fun fetchUser(userId: String): User? = transaction {
     User.find { Users.email eq userId }.firstOrNull()

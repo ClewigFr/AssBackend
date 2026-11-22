@@ -6,17 +6,15 @@ import com.ass.auth.currentUser
 import com.ass.auth.startSession
 import com.ass.dao.userNameValid
 import com.ass.dao.verifyUser
-import io.ktor.application.call
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.Parameters
-import io.ktor.request.receive
-import io.ktor.response.respond
-import io.ktor.routing.Route
-import io.ktor.routing.get
-import io.ktor.routing.post
-import io.ktor.routing.route
-import io.ktor.sessions.clear
-import io.ktor.sessions.sessions
+import io.ktor.server.request.receiveParameters
+import io.ktor.server.response.respond
+import io.ktor.server.routing.Route
+import io.ktor.server.routing.get
+import io.ktor.server.routing.post
+import io.ktor.server.routing.route
+import io.ktor.server.sessions.clear
+import io.ktor.server.sessions.sessions
 
 /**
  * Registers the [Login] and [Logout] routes '/login' and '/logout'.
@@ -40,7 +38,7 @@ fun Route.login() {
          * A POST request to the [Login] actually processes the [Parameters] to validate them, if valid it sets the session.
          */
         post {
-            val post = call.receive<Parameters>()
+            val post = call.receiveParameters()
             val userId = post["userId"] ?: ""
             val password = post["password"] ?: ""
 

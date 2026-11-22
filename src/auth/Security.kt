@@ -3,10 +3,10 @@ package com.ass.auth
 import com.ass.ASSSession
 import com.ass.dao.fetchUser
 import com.ass.model.User
-import io.ktor.application.ApplicationCall
-import io.ktor.sessions.get
-import io.ktor.sessions.sessions
-import io.ktor.sessions.set
+import io.ktor.server.application.ApplicationCall
+import io.ktor.server.sessions.get
+import io.ktor.server.sessions.sessions
+import io.ktor.server.sessions.set
 import java.util.concurrent.ConcurrentHashMap
 
 /** How long a session stays valid after login, checked on the server (the cookie itself is only signed). */

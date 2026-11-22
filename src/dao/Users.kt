@@ -1,6 +1,6 @@
 package com.ass.dao
 
-import org.jetbrains.exposed.dao.id.IntIdTable
+import org.jetbrains.exposed.v1.core.dao.id.IntIdTable
 
 /**
  * Represents the Users table using Exposed as DAO.

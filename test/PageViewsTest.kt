@@ -3,15 +3,15 @@ package com.ass
 import com.ass.controller.MAX_VIEW_AGE_MS
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
-import io.ktor.server.testing.handleRequest
+import io.ktor.server.testing.ApplicationTestBuilder
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class PageViewsTest {
 
-    private fun io.ktor.server.testing.TestApplicationEngine.postViews(body: String) =
-        handleRequest(HttpMethod.Post, "/views") { json(body) }.response.status()
+    private suspend fun ApplicationTestBuilder.postViews(body: String) =
+        call(HttpMethod.Post, "/views", json = body).status
 
     @Test
     fun allValidViewsReturn200() = withServer {

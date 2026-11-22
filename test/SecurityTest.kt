@@ -6,7 +6,6 @@ import com.ass.auth.isSessionValid
 import com.ass.controller.MAX_VIEWS_PER_REQUEST
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
-import io.ktor.server.testing.handleRequest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -18,16 +17,13 @@ class SecurityTest {
     fun loginIsLockedAfterRepeatedFailures() = withServer {
         registerAndLogin("a@x.io", "secret123")
         repeat(LoginThrottle.MAX_FAILURES) {
-            val wrong = handleRequest(HttpMethod.Post, "/login") { form("userId" to "a@x.io", "password" to "wrongpw1") }
-            assertEquals(HttpStatusCode.Unauthorized, wrong.response.status())
+            assertEquals(HttpStatusCode.Unauthorized, postForm("/login", "userId" to "a@x.io", "password" to "wrongpw1").status)
         }
         // Even the right password is refused while locked
-        val locked = handleRequest(HttpMethod.Post, "/login") { form("userId" to "a@x.io", "password" to "secret123") }
-        assertEquals(HttpStatusCode.TooManyRequests, locked.response.status())
+        assertEquals(HttpStatusCode.TooManyRequests, postForm("/login", "userId" to "a@x.io", "password" to "secret123").status)
         // Other accounts are not affected
         registerAndLogin("b@x.io", "secret123")
-        val other = handleRequest(HttpMethod.Post, "/login") { form("userId" to "b@x.io", "password" to "secret123") }
-        assertEquals(HttpStatusCode.OK, other.response.status())
+        assertEquals(HttpStatusCode.OK, postForm("/login", "userId" to "b@x.io", "password" to "secret123").status)
     }
 
     @Test
@@ -41,8 +37,7 @@ class SecurityTest {
 
     @Test
     fun registrationCanBeClosed() = withServer("ktor.security.registration_open" to "false") {
-        val call = handleRequest(HttpMethod.Post, "/register") { form("email" to "a@x.io", "password" to "secret123") }
-        assertEquals(HttpStatusCode.Forbidden, call.response.status())
+        assertEquals(HttpStatusCode.Forbidden, postForm("/register", "email" to "a@x.io", "password" to "secret123").status)
     }
 
     @Test
@@ -50,8 +45,7 @@ class SecurityTest {
         "ktor.environment" to "prod",
         "ktor.security.session_sign_key" to "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
     ) {
-        val call = handleRequest(HttpMethod.Post, "/register") { form("email" to "a@x.io", "password" to "secret123") }
-        assertEquals(HttpStatusCode.Forbidden, call.response.status())
+        assertEquals(HttpStatusCode.Forbidden, postForm("/register", "email" to "a@x.io", "password" to "secret123").status)
     }
 
     @Test
@@ -69,7 +63,6 @@ class SecurityTest {
     fun oversizedBatchIsRejected() = withServer {
         val page = createPage(registerAndLogin("a@x.io"))
         val views = (0..MAX_VIEWS_PER_REQUEST).joinToString(",") { viewJson(page) }
-        val call = handleRequest(HttpMethod.Post, "/views") { json("""{"pageViews":[$views]}""") }
-        assertEquals(HttpStatusCode.BadRequest, call.response.status())
+        assertEquals(HttpStatusCode.BadRequest, call(HttpMethod.Post, "/views", json = """{"pageViews":[$views]}""").status)
     }
 }

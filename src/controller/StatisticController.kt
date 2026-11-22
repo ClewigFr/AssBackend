@@ -3,19 +3,18 @@ package com.ass.controller
 import com.ass.model.PageView
 import com.ass.model.toPageViewsJson
 import com.ass.auth.currentUser
-import io.ktor.application.ApplicationCall
-import io.ktor.application.call
+import io.ktor.server.application.ApplicationCall
 import io.ktor.http.HttpStatusCode
-import io.ktor.response.respond
-import io.ktor.routing.Routing
-import io.ktor.routing.get
-import io.ktor.routing.route
-import org.jetbrains.exposed.sql.transactions.transaction
+import io.ktor.server.response.respond
+import io.ktor.server.routing.Route
+import io.ktor.server.routing.get
+import io.ktor.server.routing.route
+import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 
 /**
  * Page feature routes
  */
-fun Routing.stats() {
+fun Route.stats() {
     route("/stats") {
         get {
             if (!call.isLoggedIn()) return@get call.respond(HttpStatusCode.Unauthorized, "not logged")

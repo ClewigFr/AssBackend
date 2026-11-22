@@ -5,35 +5,36 @@ import com.ass.dao.Pages
 import com.ass.dao.PagesViews
 import com.ass.dao.Users
 import com.ass.routing.root
-import io.ktor.application.Application
-import io.ktor.application.install
 import com.google.gson.JsonParseException
-import io.ktor.application.call
-import io.ktor.features.BadRequestException
-import io.ktor.features.CORS
-import io.ktor.features.StatusPages
-import io.ktor.http.HttpStatusCode
-import io.ktor.response.respond
-import io.ktor.features.ContentNegotiation
-import io.ktor.gson.gson
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
-import io.ktor.routing.routing
-import io.ktor.sessions.SessionTransportTransformerMessageAuthentication
-import io.ktor.sessions.Sessions
-import io.ktor.sessions.cookie
+import io.ktor.http.HttpStatusCode
+import io.ktor.serialization.JsonConvertException
+import io.ktor.serialization.gson.gson
+import io.ktor.server.application.Application
+import io.ktor.server.application.install
+import io.ktor.server.plugins.BadRequestException
+import io.ktor.server.plugins.ContentTransformationException
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.cors.routing.CORS
+import io.ktor.server.plugins.statuspages.StatusPages
+import io.ktor.server.response.respond
+import io.ktor.server.routing.routing
+import io.ktor.server.sessions.SessionTransportTransformerMessageAuthentication
+import io.ktor.server.sessions.Sessions
+import io.ktor.server.sessions.cookie
 import io.ktor.util.hex
-import org.jetbrains.exposed.sql.Database
-import org.jetbrains.exposed.sql.SchemaUtils.createMissingTablesAndColumns
-import org.jetbrains.exposed.sql.transactions.transaction
+import kotlinx.serialization.Serializable
+import org.jetbrains.exposed.v1.jdbc.Database
+import org.jetbrains.exposed.v1.jdbc.SchemaUtils
+import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import org.jetbrains.exposed.v1.migration.jdbc.MigrationUtils
 import java.security.SecureRandom
-import kotlin.collections.set
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
 
 @Suppress("unused") // Referenced in application.conf
-@kotlin.jvm.JvmOverloads
-fun Application.module(testing: Boolean = false) {
+fun Application.module() {
     val databaseUrl = environment.config.property("ktor.deployment.database_url").getString()
     Database.connect(
         databaseUrl,
@@ -46,9 +47,14 @@ fun Application.module(testing: Boolean = false) {
 
 // Install module
 fun Application.installModule() {
+    // Read config up front: Ktor's DSL markers forbid reaching Application from inside plugin blocks
+    val dev = isDev
+    val signKey = sessionSignKey
+    val origins = corsOrigins
+
     install(Sessions) {
         cookie<ASSSession>("MY_SESSION") {
-            if (isDev) {
+            if (dev) {
                 cookie.extensions["SameSite"] = "lax"
             } else {
                 // The dashboard is served from another site, so the cookie must be sent cross-site (HTTPS only).
@@ -56,29 +62,31 @@ fun Application.installModule() {
                 cookie.secure = true
             }
             // Sign the cookie so a client cannot forge a session for another user.
-            transform(SessionTransportTransformerMessageAuthentication(sessionSignKey))
+            transform(SessionTransportTransformerMessageAuthentication(signKey))
         }
     }
 
     install(CORS) {
-        method(HttpMethod.Options)
-        method(HttpMethod.Put)
-        method(HttpMethod.Delete)
-        method(HttpMethod.Patch)
-        header(HttpHeaders.Authorization)
-        header("MyCustomHeader")
+        allowMethod(HttpMethod.Options)
+        allowMethod(HttpMethod.Put)
+        allowMethod(HttpMethod.Delete)
+        allowMethod(HttpMethod.Patch)
+        allowHeader(HttpHeaders.Authorization)
+        allowHeader(HttpHeaders.ContentType)
         allowCredentials = true
         // Only the dashboard origins may make credentialed requests (CORS_ORIGINS, comma-separated).
-        corsOrigins.forEach { origin ->
+        origins.forEach { origin ->
             val (scheme, host) = origin.split("://", limit = 2)
-            host(host, schemes = listOf(scheme))
+            allowHost(host, schemes = listOf(scheme))
         }
     }
 
     // Unparseable request bodies are client errors (400), never 500: the Android client retries on 5xx.
     install(StatusPages) {
-        exception<JsonParseException> { call.respond(HttpStatusCode.BadRequest) }
-        exception<BadRequestException> { call.respond(HttpStatusCode.BadRequest) }
+        exception<BadRequestException> { call, _ -> call.respond(HttpStatusCode.BadRequest) }
+        exception<ContentTransformationException> { call, _ -> call.respond(HttpStatusCode.BadRequest) }
+        exception<JsonConvertException> { call, _ -> call.respond(HttpStatusCode.BadRequest) }
+        exception<JsonParseException> { call, _ -> call.respond(HttpStatusCode.BadRequest) }
     }
 
     install(ContentNegotiation) {
@@ -110,7 +118,9 @@ fun Application.routingInitialization() {
 // Database init: also adds columns introduced after the tables were first created
 fun Application.databaseInitialization() {
     transaction {
-        createMissingTablesAndColumns(Users, Pages, PagesViews)
+        SchemaUtils.create(Users, Pages, PagesViews)
+        MigrationUtils.statementsRequiredForDatabaseMigration(Users, Pages, PagesViews, withLogs = false)
+            .forEach { exec(it) }
     }
 }
 
@@ -136,6 +146,7 @@ private val Application.corsOrigins: List<String>
         .split(',').map { it.trim().trimEnd('/') }.filter { it.contains("://") }
 
 /** Signed session cookie content. [issuedAt] lets the server expire sessions (see SESSION_MAX_AGE_MS). */
+@Serializable
 data class ASSSession(val userId: String = "", val issuedAt: Long = 0)
 
 val Application.envKind get() = environment.config.property("ktor.environment").getString()

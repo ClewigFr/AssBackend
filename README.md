@@ -1,6 +1,6 @@
 # AssBackend — Anonymous Simple Stats API
 
-The Ktor + Exposed server that receives anonymous page views from the [AssAndroid](../AssAndroid) library and serves them to the AssFrontEnd dashboard.
+The Ktor 3 + Exposed 1.x server that receives anonymous page views from the [AssAndroid](../AssAndroid) library and serves them to the AssFrontEnd dashboard.
 
 ## Configuration
 
@@ -52,7 +52,7 @@ The dashboard and the API run on different sites, so outside `dev` the session c
 
 ## Running in dev
 
-Requirements: **JDK 11**. Gradle 6.3 doesn't run on JDK 17+. In dev, no environment variable is needed: the server uses an in-memory H2 database and a random session key.
+Requirements: **JDK 17 or newer** (Kotlin 2.4, Gradle 9.9, Ktor 3.6). In dev, no environment variable is needed: the server uses an in-memory H2 database and a random session key.
 
 1. Start the server on port 8099. The dashboard's dev server already uses 8080, and the dashboard expects the API on 8099.
    ```bash
@@ -60,9 +60,9 @@ Requirements: **JDK 11**. Gradle 6.3 doesn't run on JDK 17+. In dev, no environm
    ```
    With `./gradlew run`, the `PORT` variable is ignored (Gradle doesn't pass it to the server), so use `-port` as shown. `PORT` does work with the jar: `PORT=8099 java -jar build/libs/anonymoussimplestats-0.0.1-all.jar`.
 
-   If your default JDK isn't 11, set `JAVA_HOME` first, for example:
+   If your default JDK is older than 17, set `JAVA_HOME` first, for example:
    ```bash
-   export JAVA_HOME=$(/usr/libexec/java_home -v 11)
+   export JAVA_HOME=$(/usr/libexec/java_home -v 17)
    ```
 2. In another terminal, add test data: one account, three pages and views spread over three days. The login and password are at the top of the script.
    ```bash

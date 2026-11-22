@@ -4,20 +4,19 @@ import com.ass.model.Page
 import com.ass.model.PageView
 import com.ass.model.PageViewsJson
 import com.ass.model.PostPageViews
-import io.ktor.application.call
 import io.ktor.http.HttpStatusCode
-import io.ktor.request.receiveOrNull
-import io.ktor.response.respond
-import io.ktor.routing.Routing
-import io.ktor.routing.post
-import io.ktor.routing.route
-import org.jetbrains.exposed.sql.transactions.transaction
+import io.ktor.server.request.receiveNullable
+import io.ktor.server.response.respond
+import io.ktor.server.routing.Route
+import io.ktor.server.routing.post
+import io.ktor.server.routing.route
+import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import java.util.UUID
 
 /**
  * Page feature routes
  */
-fun Routing.pageViews() {
+fun Route.pageViews() {
     route("/views") {
         // example :
         // {
@@ -37,7 +36,7 @@ fun Routing.pageViews() {
         post {
             // A body that can't be parsed is the client's fault: answer 400 so it drops the
             // batch instead of retrying it forever (the Android client retries on 5xx).
-            val post = call.receiveOrNull<PostPageViews>()
+            val post = call.receiveNullable<PostPageViews>()
             val size = (post?.pageViews as List<*>?)?.size ?: 0
             if (post == null || size > MAX_VIEWS_PER_REQUEST) {
                 call.respond(HttpStatusCode.BadRequest)

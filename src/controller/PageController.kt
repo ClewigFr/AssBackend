@@ -6,21 +6,20 @@ import com.ass.dao.PagesViews
 import com.ass.model.Page
 import com.ass.model.PageJson
 import com.ass.model.toPageJson
-import io.ktor.application.call
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
-import io.ktor.request.receiveOrNull
-import io.ktor.response.respond
-import io.ktor.response.respondText
-import io.ktor.routing.*
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.jetbrains.exposed.sql.deleteWhere
-import org.jetbrains.exposed.sql.transactions.transaction
+import io.ktor.server.request.receiveNullable
+import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.*
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.jdbc.deleteWhere
+import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 
 /**
  * Page feature routes
  */
-fun Routing.pages() {
+fun Route.pages() {
     route("/pages") {
         get {
             fetchAllPages().apply {
@@ -38,7 +37,7 @@ fun Routing.pages() {
             if (user == null) {
                 call.respondText("not logged", ContentType.Text.Plain, HttpStatusCode.Unauthorized)
             } else {
-                val post = call.receiveOrNull<PageJson>()
+                val post = call.receiveNullable<PageJson>()
                 if (post == null || (post.name as String?).isNullOrBlank()) {
                     return@post call.respondText("name is required", ContentType.Text.Plain, HttpStatusCode.BadRequest)
                 }
@@ -59,7 +58,7 @@ fun Routing.pages() {
             if (user == null) {
                 call.respondText("not logged", ContentType.Text.Plain, HttpStatusCode.Unauthorized)
             } else {
-                val post = call.receiveOrNull<PageJson>()
+                val post = call.receiveNullable<PageJson>()
                 val pageId = post?.id as java.util.UUID?
                     ?: return@delete call.respondText("id is required", ContentType.Text.Plain, HttpStatusCode.BadRequest)
                 val deleted = transaction {

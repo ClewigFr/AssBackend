@@ -1,9 +1,9 @@
 package com.ass.model
 
 import com.ass.dao.Pages
-import org.jetbrains.exposed.dao.UUIDEntity
-import org.jetbrains.exposed.dao.UUIDEntityClass
-import org.jetbrains.exposed.dao.id.EntityID
+import org.jetbrains.exposed.v1.dao.java.UUIDEntity
+import org.jetbrains.exposed.v1.dao.java.UUIDEntityClass
+import org.jetbrains.exposed.v1.core.dao.id.EntityID
 import java.util.*
 
 class Page(id: EntityID<UUID>) : UUIDEntity(id) {

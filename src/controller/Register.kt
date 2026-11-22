@@ -7,17 +7,14 @@ import com.ass.dao.createUser
 import com.ass.dao.fetchUser
 import com.ass.dao.userNameValid
 import com.ass.model.User
-import io.ktor.application.application
-import io.ktor.application.call
-import io.ktor.application.log
+import io.ktor.server.application.log
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.Parameters
-import io.ktor.request.receive
-import io.ktor.response.respond
-import io.ktor.routing.Route
-import io.ktor.routing.get
-import io.ktor.routing.post
-import io.ktor.routing.route
+import io.ktor.server.request.receiveParameters
+import io.ktor.server.response.respond
+import io.ktor.server.routing.Route
+import io.ktor.server.routing.get
+import io.ktor.server.routing.post
+import io.ktor.server.routing.route
 
 /**
  * Register routes for user registration in the [Register] route (/register)
@@ -35,7 +32,7 @@ fun Route.register() {
     route("/register") {
         post {
             // get current from session data if any
-            if (!application.registrationOpen) {
+            if (!call.application.registrationOpen) {
                 return@post call.respond(HttpStatusCode.Forbidden, "Registration is closed")
             }
             val user = call.currentUser()
@@ -44,7 +41,7 @@ fun Route.register() {
 
             // receive post data
             // TODO: use conneg when it's ready and `call.receive<Register>()`
-            val registration = call.receive<Parameters>()
+            val registration = call.receiveParameters()
             val password = registration["password"] ?: ""
             val displayName = registration["displayName"] ?: ""
             val email = registration["email"] ?: ""
@@ -62,7 +59,7 @@ fun Route.register() {
                             // NOTE: This is security issue that allows to enumerate/verify registered users. Do not do this in real app :)
                             fetchUser(email) != null -> call.respond(HttpStatusCode.Conflict, "User with the following login is already registered")
                             else -> {
-                                application.log.error("Failed to register user", e)
+                                call.application.log.error("Failed to register user", e)
                                 call.respond(HttpStatusCode.InternalServerError, "Failed to register")
                             }
                         }
