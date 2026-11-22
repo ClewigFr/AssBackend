@@ -3,6 +3,8 @@ package com.ass
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.client.request.request
+import io.ktor.client.statement.bodyAsText
+import kotlinx.coroutines.launch
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -38,5 +40,30 @@ class LoadProtectionTest {
             headers.append(io.ktor.http.HttpHeaders.AcceptEncoding, "gzip")
         }
         assertEquals("gzip", response.headers[io.ktor.http.HttpHeaders.ContentEncoding])
+    }
+}
+
+class IngestionIntegrityTest {
+    /**
+     * Every accepted view is written, with many concurrent requests and constant flushing.
+     * Note: the race this guards against (a timeout cancelling receive() after it took a view)
+     * was reproduced with ApacheBench against the real server (1 view lost per ~140k), not here:
+     * the test engine's timing is too regular to trigger it.
+     */
+    @Test
+    fun noViewIsLostUnderConcurrentLoad() = withServer("ktor.performance.flush_interval_ms" to "1") {
+        val alice = registerAndLogin("alice@x.io")
+        val (app, page) = appWithPage(alice)
+        val body = """{"app":"$app","pageViews":[${(1..20).joinToString(",") { viewJson(page) }}]}"""
+        kotlinx.coroutines.coroutineScope {
+            repeat(300) {
+                launch { assertEquals(HttpStatusCode.OK, call(HttpMethod.Post, "/views", json = body).status) }
+            }
+        }
+        awaitIngested()
+        val stats = kotlinx.serialization.json.Json.decodeFromString<com.ass.model.PeriodStats>(
+            call(HttpMethod.Get, "/apps/$app/stats?period=day", alice).bodyAsText()
+        )
+        assertEquals(6_000, stats.current.views)
     }
 }

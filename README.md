@@ -107,7 +107,27 @@ Things to know:
 ./gradlew test
 ```
 
-Each test starts the real module against a fresh in-memory database. No server needs to be running.
+Each test starts the real module against a fresh in-memory H2 database. `PostgresTest` runs the main flows and the migration from the legacy schema (`testresources/legacy-schema.sql`) on a real PostgreSQL 18, using embedded binaries downloaded by Gradle. No server or Docker is needed.
+
+## Deploying an upgrade
+
+Validated on PostgreSQL 18 with a database in the pre-upgrade state (created by commit `7886c78`): tables and data are kept, and the new columns, indexes and applications are added on the first start.
+
+1. **Back up the database.** For example: `heroku pg:backups:capture`, or `pg_dump`.
+2. **Set the configuration:** `SESSION_SIGN_KEY` (required, `openssl rand -hex 32`), `CORS_ORIGINS` (the dashboard's URL), and `JDBC_DATABASE_URL`. `REGISTRATION_OPEN=true` only if sign-ups should be open.
+3. **Deploy the backend and the dashboard together.** Their API changed in step.
+4. **Check the first start's logs.** On a database from before applications, expect:
+   ```
+   DataMigrations - Widening pagesviews.id to BIGINT (one-time table rewrite)
+   DataMigrations - Moved N pages into a default application
+   DataMigrations - Linked N page views to their application
+   ```
+   The `BIGINT` change rewrites the views table once, so on a large table the first start takes longer (the table is locked meanwhile). Later starts log none of these lines.
+5. **Smoke test:** log in to the dashboard. Each existing user finds their old pages in an "Application par défaut", with their stats. Everyone has to log in again once, because the session cookie format changed.
+
+What doesn't migrate:
+- Pages created before page ownership existed (`owner` is null) are kept but belong to no application, so they're visible to nobody. Their views are kept too.
+- Automatic migrations never `DROP` anything. The legacy `pages.owner` column is kept.
 
 ## Production build
 

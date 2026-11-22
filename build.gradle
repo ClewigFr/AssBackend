@@ -57,6 +57,9 @@ dependencies {
     testImplementation platform("io.ktor:ktor-bom:$ktor_version")
     testImplementation 'io.ktor:ktor-server-test-host'
     testImplementation "org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version"
+    // Real PostgreSQL binaries for tests (no Docker needed)
+    testImplementation "io.zonky.test:embedded-postgres:$embedded_postgres_version"
+    testImplementation enforcedPlatform("io.zonky.test.postgres:embedded-postgres-binaries-bom:$postgres_binaries_version")
 }
 
 shadowJar {

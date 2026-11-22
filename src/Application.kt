@@ -7,6 +7,7 @@ import com.ass.dao.PagesViews
 import com.ass.dao.Users
 import com.ass.db.Db
 import com.ass.db.migrateToApplications
+import com.ass.db.widenViewIds
 import com.ass.ingest.PageCache
 import com.ass.ingest.ViewIngestor
 import com.ass.routing.root
@@ -184,6 +185,7 @@ fun databaseInitialization(db: Db) {
             .forEach { exec(it) }
     }
     transaction(db.database) {
+        widenViewIds()
         migrateToApplications()
     }
 }

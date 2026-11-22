@@ -9,7 +9,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.selects.onTimeout
+import kotlinx.coroutines.selects.select
 import org.jetbrains.exposed.v1.core.dao.id.EntityID
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.jdbc.batchInsert
@@ -20,6 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 data class ViewRow(val page: UUID, val app: UUID?, val sessionId: UUID, val timestamp: Long)
 
+
 /**
  * Buffers accepted page views in memory and writes them in batches (one INSERT per batch),
  * so a request to /views costs no database round trip.
@@ -27,6 +29,7 @@ data class ViewRow(val page: UUID, val app: UUID?, val sessionId: UUID, val time
  * Trade-off: views still in the buffer (at most [flushIntervalMs] worth) are lost if the
  * process is killed. On a normal shutdown, [close] writes everything first.
  */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ViewIngestor(
     private val db: Db,
     scope: CoroutineScope,
@@ -58,16 +61,29 @@ class ViewIngestor(
 
     private suspend fun run() {
         val buffer = ArrayList<ViewRow>(batchSize)
-        while (true) {
-            val first = channel.receiveCatching().getOrNull() ?: break
-            buffer += first
-            withTimeoutOrNull(flushIntervalMs) {
-                while (buffer.size < batchSize) {
-                    buffer += channel.receiveCatching().getOrNull() ?: break
+        var open = true
+        while (open) {
+            val first = channel.receiveCatching()
+            if (first.isClosed) break
+            buffer += first.getOrThrow()
+            // Collect more until the batch is full or flushIntervalMs has passed. Don't wrap receive()
+            // in withTimeout: a timeout racing with a delivery can cancel receive() after it took an
+            // element, losing it. select picks exactly one of "an element" or "timeout", atomically.
+            val deadline = System.nanoTime() + flushIntervalMs * 1_000_000
+            while (buffer.size < batchSize) {
+                val ready = channel.tryReceive()
+                if (ready.isSuccess) { buffer += ready.getOrThrow(); continue }
+                if (ready.isClosed) { open = false; break }
+                val remainingMs = (deadline - System.nanoTime()) / 1_000_000
+                if (remainingMs <= 0) break
+                val received = select<Boolean> {
+                    channel.onReceiveCatching { result ->
+                        result.getOrNull()?.let { buffer += it; true } ?: run { open = false; false }
+                    }
+                    onTimeout(remainingMs) { false }
                 }
+                if (!received) break
             }
-            // Take whatever else is already waiting, without blocking
-            while (buffer.size < batchSize) buffer += channel.tryReceive().getOrNull() ?: break
             write(buffer)
             pending.addAndGet(-buffer.size)
             buffer.clear()
