@@ -52,7 +52,8 @@ Things to know:
 - **Brute-force protection:** after 5 wrong passwords, an account refuses logins for 15 minutes (`429`). The counter is kept in memory, per server instance.
 - **Registration is closed in production by default.** To create accounts, set `REGISTRATION_OPEN=true`. Each account only sees its own applications and stats.
 - Login takes the same time whether or not the email exists, so it doesn't reveal which accounts exist.
-- `POST /views` accepts at most 5000 views per request. Bigger batches get `400`.
+- `POST /views` accepts at most 1000 views per request (the Android client's retry file cap) and 1 MB of JSON once decompressed. Bigger batches get `400`.
+- `POST /views` bodies may be gzipped (`Content-Encoding: gzip`); every response advertises it with `Accept-Encoding: gzip`, and the Android library only compresses once it has seen that header. `429` and `503` carry `Retry-After`.
 
 ### Performance
 

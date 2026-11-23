@@ -7,7 +7,14 @@ import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.Json
 import java.util.UUID
+
+/** JSON settings of every request and response. */
+val AssJson = Json {
+    ignoreUnknownKeys = true
+    explicitNulls = false
+}
 
 /** UUID as a JSON string; an invalid string is a deserialization error (answered with 400). */
 object UUIDSerializer : KSerializer<UUID> {

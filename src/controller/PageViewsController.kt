@@ -4,12 +4,12 @@ import com.ass.ingest.PageCache
 import com.ass.ingest.ViewBudget
 import com.ass.ingest.ViewIngestor
 import com.ass.ingest.ViewRow
-import com.ass.model.PostPageViews
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.plugins.origin
 import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.plugins.ratelimit.rateLimit
-import io.ktor.server.request.receiveNullable
+import io.ktor.http.HttpHeaders
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.post
@@ -26,12 +26,20 @@ const val MAX_VIEW_AGE_MS = 365L * 24 * 60 * 60 * 1000
 
 val VIEWS_RATE_LIMIT = RateLimitName("views")
 
+/** Retry-After of a 429 from the views-per-minute budget: its window is one minute. */
+const val BUDGET_RETRY_AFTER_S = 60
+
+/** Retry-After of a 503: the write buffer drains every FLUSH_INTERVAL_MS, a few seconds is plenty. */
+const val BUFFER_FULL_RETRY_AFTER_S = 10
+
 /**
  * POST /views {"app","pageViews":[{"page","sessionId","timestamp"}]}, timestamp = ms elapsed since the view.
  * When "app" is given, only pages of that application are accepted. Clients that don't send it
  * (older library versions) are still accepted for any existing page.
  * 200: all views accepted, 206: some rejected, 400: none accepted, 429: rate limited (requests or views per minute),
- * 503: write buffer full. The Android client retries on anything but 200/206/400.
+ * 503: write buffer full, 415: unsupported Content-Encoding. 429 and 503 carry Retry-After.
+ * The body may be gzipped (Content-Encoding: gzip); every response says so with Accept-Encoding.
+ * The Android client retries on anything but 200/206/400.
  */
 fun Route.pageViews(pageCache: PageCache, ingestor: ViewIngestor, budget: ViewBudget, rateLimited: Boolean) {
     if (rateLimited) {
@@ -43,7 +51,13 @@ fun Route.pageViews(pageCache: PageCache, ingestor: ViewIngestor, budget: ViewBu
 
 private fun Route.viewsRoute(pageCache: PageCache, ingestor: ViewIngestor, budget: ViewBudget) {
     post("/views") {
-        val body = call.receiveNullable<PostPageViews>()
+        // Tell clients they may gzip their next batches (RFC 7694)
+        call.response.header(HttpHeaders.AcceptEncoding, "gzip")
+        val body = when (val read = readViewsBody(call)) {
+            is ViewsBody.Read -> read.views
+            ViewsBody.UnsupportedEncoding -> return@post call.respond(HttpStatusCode.UnsupportedMediaType)
+            ViewsBody.Invalid -> return@post call.respond(HttpStatusCode.BadRequest)
+        }
         val hits = body?.pageViews.orEmpty()
         if (hits.isEmpty() || hits.size > MAX_VIEWS_PER_REQUEST) {
             return@post call.respond(HttpStatusCode.BadRequest)
@@ -63,8 +77,14 @@ private fun Route.viewsRoute(pageCache: PageCache, ingestor: ViewIngestor, budge
         }
         val status = when {
             rows.isEmpty() -> HttpStatusCode.BadRequest
-            !budget.take(call.request.origin.remoteHost, rows.size, now) -> HttpStatusCode.TooManyRequests
-            !ingestor.offer(rows) -> HttpStatusCode.ServiceUnavailable
+            !budget.take(call.request.origin.remoteHost, rows.size, now) -> {
+                call.response.header(HttpHeaders.RetryAfter, BUDGET_RETRY_AFTER_S.toString())
+                HttpStatusCode.TooManyRequests
+            }
+            !ingestor.offer(rows) -> {
+                call.response.header(HttpHeaders.RetryAfter, BUFFER_FULL_RETRY_AFTER_S.toString())
+                HttpStatusCode.ServiceUnavailable
+            }
             rows.size == hits.size -> HttpStatusCode.OK
             else -> HttpStatusCode.PartialContent
         }
