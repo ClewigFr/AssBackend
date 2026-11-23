@@ -1,7 +1,7 @@
 package com.ass.auth
 
 import com.ass.ASSSession
-import com.ass.dao.fetchUser
+import com.ass.dao.fetchUserById
 import com.ass.db.Db
 import com.ass.model.User
 import io.ktor.server.application.ApplicationCall
@@ -13,19 +13,20 @@ import java.util.concurrent.ConcurrentHashMap
 /** How long a session stays valid after login, checked on the server (the cookie itself is only signed). */
 const val SESSION_MAX_AGE_MS = 7L * 24 * 60 * 60 * 1000
 
-/** Start a session for [email]. */
-fun ApplicationCall.startSession(email: String) {
-    sessions.set(ASSSession(userId = email, issuedAt = System.currentTimeMillis()))
+/** Start a session for [user]. */
+fun ApplicationCall.startSession(user: User) {
+    sessions.set(ASSSession(userId = user.id.value.toString(), issuedAt = System.currentTimeMillis(), version = user.sessionVersion))
 }
 
 /**
  * The logged-in user, or null if there is no session, it has expired (or predates expiry
- * support), or the user no longer exists.
+ * support), was revoked by a logout, or the user no longer exists.
  */
 suspend fun ApplicationCall.currentUser(db: Db, now: Long = System.currentTimeMillis()): User? {
     val session = sessions.get<ASSSession>() ?: return null
     if (!isSessionValid(session, now)) return null
-    return fetchUser(db, session.userId)
+    val id = session.userId.toIntOrNull() ?: return null
+    return fetchUserById(db, id)?.takeIf { it.sessionVersion == session.version }
 }
 
 fun isSessionValid(session: ASSSession, now: Long = System.currentTimeMillis()): Boolean =

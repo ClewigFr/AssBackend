@@ -9,4 +9,6 @@ object Users : IntIdTable() {
     val email = varchar("email", 128).uniqueIndex()
     val displayName = varchar("display_name", 256)
     val passwordHash = varchar("password_hash", 64)
+    /** Bumped on logout: every session cookie issued before stops working. */
+    val sessionVersion = integer("session_version").default(0)
 }

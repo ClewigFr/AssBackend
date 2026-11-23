@@ -28,6 +28,9 @@ import io.ktor.server.application.ApplicationStopping
 import io.ktor.server.application.install
 import io.ktor.server.application.log
 import io.ktor.server.plugins.BadRequestException
+import io.ktor.server.plugins.PayloadTooLargeException
+import com.ass.auth.BodyLimit
+import com.ass.auth.originCheck
 import io.ktor.server.plugins.ContentTransformationException
 import io.ktor.server.plugins.compression.Compression
 import io.ktor.server.plugins.compression.CompressionConfig
@@ -166,6 +169,7 @@ fun Application.installModule() {
         exception<ContentTransformationException> { call, _ -> call.respond(HttpStatusCode.BadRequest) }
         exception<JsonConvertException> { call, _ -> call.respond(HttpStatusCode.BadRequest) }
         exception<SerializationException> { call, _ -> call.respond(HttpStatusCode.BadRequest) }
+        exception<PayloadTooLargeException> { call, _ -> call.respond(HttpStatusCode.PayloadTooLarge) }
     }
 
     install(ContentNegotiation) {
@@ -181,6 +185,9 @@ fun Application.installModule() {
         mode = CompressionConfig.Mode.CompressResponse
         gzip { minimumSize(1024) }
     }
+
+    install(BodyLimit)
+    install(originCheck(origins))
 
     if (!dev) {
         // Behind a proxy (Cloudflare Tunnel, Heroku's router), the real client IP is the last
@@ -250,9 +257,13 @@ private val Application.corsOrigins: List<String>
     get() = environment.config.property("ktor.security.cors_origins").getString()
         .split(',').map { it.trim().trimEnd('/') }.filter { it.contains("://") }
 
-/** Signed session cookie content. [issuedAt] lets the server expire sessions (see SESSION_MAX_AGE_MS). */
+/**
+ * Signed session cookie content: [userId] is the user's internal id (no email in the cookie),
+ * [version] must match the user's session version (logout revokes), [issuedAt] lets the server
+ * expire sessions (see SESSION_MAX_AGE_MS). Older cookies carried the email: they are refused.
+ */
 @Serializable
-data class ASSSession(val userId: String = "", val issuedAt: Long = 0)
+data class ASSSession(val userId: String = "", val issuedAt: Long = 0, val version: Int = 0)
 
 val Application.envKind get() = environment.config.property("ktor.environment").getString()
 val Application.isDev get() = envKind == "dev"

@@ -5,6 +5,7 @@ import com.ass.auth.startSession
 import com.ass.registrationOpen
 import com.ass.dao.createUser
 import com.ass.dao.fetchUser
+import com.ass.dao.normalizeEmail
 import com.ass.dao.userNameValid
 import com.ass.db.Db
 import io.ktor.server.application.log
@@ -43,16 +44,20 @@ fun Route.register(db: Db, rateLimited: Boolean) {
             // TODO: use conneg when it's ready and `call.receive<Register>()`
             val registration = call.receiveParameters()
             val password = registration["password"] ?: ""
-            val displayName = registration["displayName"] ?: ""
-            val email = registration["email"] ?: ""
+            val displayName = registration["displayName"]?.trim() ?: ""
+            val email = normalizeEmail(registration["email"] ?: "")
 
             when {
-                password.length < 6 -> call.respond(HttpStatusCode.BadRequest, "Password should be at least 6 characters long")
+                password.length < MIN_PASSWORD_LENGTH -> call.respond(HttpStatusCode.BadRequest, "Password should be at least $MIN_PASSWORD_LENGTH characters long")
+                // bcrypt silently ignores everything after 72 bytes
+                password.toByteArray(Charsets.UTF_8).size > BCRYPT_MAX_BYTES -> call.respond(HttpStatusCode.BadRequest, "Password should be at most $BCRYPT_MAX_BYTES bytes long")
                 email.length < 4 -> call.respond(HttpStatusCode.BadRequest, "Login should be at least 4 characters long")
+                email.length > MAX_EMAIL_LENGTH -> call.respond(HttpStatusCode.BadRequest, "Login should be at most $MAX_EMAIL_LENGTH characters long")
+                displayName.length > MAX_DISPLAY_NAME_LENGTH -> call.respond(HttpStatusCode.BadRequest, "Display name should be at most $MAX_DISPLAY_NAME_LENGTH characters long")
                 !userNameValid(email) -> call.respond(HttpStatusCode.BadRequest, "Login should be a valid email address")
                 fetchUser(db, email) != null -> call.respond(HttpStatusCode.Conflict, "User with the following login is already registered")
                 else -> {
-                    try {
+                    val created = try {
                         createUser(db, email, displayName, password)
                     } catch (e: Throwable) {
                         when {
@@ -66,7 +71,7 @@ fun Route.register(db: Db, rateLimited: Boolean) {
                         return@post
                     }
 
-                    call.startSession(email)
+                    call.startSession(created)
                     call.respond(HttpStatusCode.Created, "User $email created")
                 }
             }
@@ -86,3 +91,11 @@ fun Route.register(db: Db, rateLimited: Boolean) {
         }
     }
 }
+
+/** For new accounts; logins still accept the old 6-character minimum. */
+const val MIN_PASSWORD_LENGTH = 8
+const val BCRYPT_MAX_BYTES = 72
+/** Login refuses longer passwords outright (they could never have been registered). */
+const val MAX_PASSWORD_LENGTH = 256
+const val MAX_EMAIL_LENGTH = 128
+const val MAX_DISPLAY_NAME_LENGTH = 256

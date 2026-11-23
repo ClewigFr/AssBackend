@@ -65,7 +65,7 @@ The server is built to absorb large volumes of page views with little memory:
 - **Page ids are kept in memory**, so validating a view never queries the database.
 - **Connection pool** (HikariCP), with queries run on a dedicated thread pool of the same size, so a slow database never blocks request handling.
 - **Stats are computed in SQL** (counts per page and per day) and **cached** for `STATS_CACHE_MS`. The response size depends on the number of pages and days, not on the number of views.
-- **gzip** for responses over 1 KB, **per-IP rate limits** on `/views` (requests and views per minute, at most 1000 views per request), `/login` and `/register`, and logs written asynchronously at `INFO` level.
+- **gzip** for responses over 1 KB, **per-IP rate limits** on `/views` (requests and views per minute, at most 1000 views per request), `/login` and `/register`, request bodies capped at 1 MB (`413`), state-changing browser requests only from `CORS_ORIGINS` (CSRF), and logs written asynchronously at `INFO` level.
 - **JVM** (`Procfile`): `-XX:+UseSerialGC -XX:MaxRAMPercentage=75 -Xss512k`, tuned for small containers.
 
 Measured locally with ApacheBench (H2 in memory, so absolute numbers will differ on PostgreSQL):
@@ -194,9 +194,9 @@ There is no "users" figure: the library only knows a random session id per app l
 A user creates **applications** (name + generated UUID), and adds **pages** to each (name + generated UUID). The Android library is initialized with the application's UUID and calls `logScreen` with a page's UUID. `POST /views` then only accepts pages that belong to that application. Older library versions that don't send `"app"` still work: their views are attributed to the page's application.
 
 When upgrading an existing database, pages created before applications are moved automatically, on startup, into an "Application par défaut" per owner, and existing views are linked to it.
-| `POST`   | `/register`   | none  | Form fields: `email`, `password`, `displayName` |
+| `POST`   | `/register`   | none  | Form fields: `email` (case-insensitive, max 128), `password` (8 characters to 72 bytes), `displayName` (max 256) |
 | `POST`   | `/login`      | none  | Form fields: `userId` (email), `password` |
-| `GET`    | `/logout`     | none  | Clear the session |
+| `POST`   | `/logout`     | none  | Clear the session and revoke every session of the user (all devices) |
 
 Passwords are hashed with bcrypt. Accounts created before bcrypt still have the old hashes, which are checked once more and upgraded to bcrypt the next time the user logs in.
 

@@ -5,10 +5,22 @@ import com.ass.model.User
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.lowerCase
+import org.jetbrains.exposed.v1.core.plus
 import org.jetbrains.exposed.v1.jdbc.update
 
+/** Emails are compared case-insensitively ("A@x.fr" and "a@x.fr" are one account). */
+fun normalizeEmail(email: String) = email.trim().lowercase()
+
 suspend fun fetchUser(db: Db, email: String): User? = db.query {
-    User.find { Users.email eq email }.firstOrNull()
+    User.find { Users.email.lowerCase() eq normalizeEmail(email) }.firstOrNull()
+}
+
+suspend fun fetchUserById(db: Db, id: Int): User? = db.query { User.findById(id) }
+
+/** Revokes every session of the user (see [Users.sessionVersion]). */
+suspend fun revokeSessions(db: Db, id: Int) = db.query {
+    Users.update({ Users.id eq id }) { it[sessionVersion] = sessionVersion + 1 }
 }
 
 /**
@@ -31,11 +43,11 @@ suspend fun verifyUser(db: Db, email: String, password: String): User? {
 
 private val DUMMY_HASH: String by lazy { hashPassword("not-a-real-password") }
 
-suspend fun createUser(db: Db, email: String, displayName: String, password: String) {
+suspend fun createUser(db: Db, email: String, displayName: String, password: String): User {
     val hash = withContext(Dispatchers.Default) { hashPassword(password) }
-    db.query {
+    return db.query {
         User.new {
-            this.email = email
+            this.email = normalizeEmail(email)
             this.displayName = displayName
             passwordHash = hash
         }

@@ -4,6 +4,7 @@ import com.ass.ASSSession
 import com.ass.auth.LoginThrottle
 import com.ass.auth.currentUser
 import com.ass.auth.startSession
+import com.ass.dao.revokeSessions
 import com.ass.dao.userNameValid
 import com.ass.dao.verifyUser
 import com.ass.db.Db
@@ -52,7 +53,7 @@ fun Route.login(db: Db, rateLimited: Boolean) {
 
             val login = when {
                 userId.length < 4 -> null
-                password.length < 6 -> null
+                password.length !in 6..MAX_PASSWORD_LENGTH -> null
                 !userNameValid(userId) -> null
                 else -> verifyUser(db, userId, password)
             }
@@ -62,7 +63,7 @@ fun Route.login(db: Db, rateLimited: Boolean) {
                 call.respond(HttpStatusCode.Unauthorized, "Invalid username or password")
             } else {
                 LoginThrottle.recordSuccess(userId, client)
-                call.startSession(login.email)
+                call.startSession(login)
                 call.respond("Logged")
             }
         } }
@@ -70,9 +71,11 @@ fun Route.login(db: Db, rateLimited: Boolean) {
 
     route("/logout") {
         /**
-         * A GET request to the [Logout] page.
+         * POST, not GET, so another site can't log the user out with an <img>. Revokes every
+         * session of the user (all devices), so a copied cookie stops working too.
          */
-        get {
+        post {
+            call.currentUser(db)?.let { revokeSessions(db, it.id.value) }
             call.sessions.clear<ASSSession>()
             call.respond("Logout")
         }
