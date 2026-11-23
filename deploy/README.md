@@ -77,10 +77,7 @@ curl -X POST https://ass-api.clewig.fr/register -d email=you@example.com -d pass
 ```
 Then set it back to `false` and run `docker compose up -d backend` again.
 
-**Update** after a push to `master` (the CI has published new images):
-```bash
-docker compose pull && docker compose up -d
-```
+**Update** after a push to `master`: see [UPGRADING.md](UPGRADING.md) (backend, dashboard or both, database changes, rollback).
 
 ## 5. Nightly backups
 
