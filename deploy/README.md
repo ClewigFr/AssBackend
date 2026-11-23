@@ -24,7 +24,13 @@ The Android library is configured with `AssConfig(endpoint = "https://ass-api.cl
    curl -fsSL https://get.docker.com | sudo sh
    sudo usermod -aG docker $USER   # log out and back in afterwards
    ```
-4. Reduce writes to the SD card:
+4. Turn on memory limits for containers (Raspberry Pi OS turns them off; otherwise Docker warns `Your kernel does not support memory limit capabilities` and ignores `mem_limit`):
+   ```bash
+   sudo sed -i '1 s/$/ cgroup_enable=memory/' /boot/firmware/cmdline.txt
+   sudo reboot
+   ```
+   `cmdline.txt` must stay on a single line.
+5. Reduce writes to the SD card:
    - Logs in RAM: in `/etc/systemd/journald.conf`, set `Storage=volatile` and `RuntimeMaxUse=50M`, then `sudo systemctl restart systemd-journald`.
    - Swap: recent Raspberry Pi OS swaps to compressed RAM (zram) already. Check with `swapon --show`: you should see `/dev/zram0` and no `/var/swap` file.
 
@@ -42,8 +48,10 @@ The Android library is configured with `AssConfig(endpoint = "https://ass-api.cl
 
    | Subdomain | Domain | Service |
    |---|---|---|
-   | `ass` | `clewig.fr` | `HTTP` `dashboard:80` |
-   | `ass-api` | `clewig.fr` | `HTTP` `backend:8080` |
+   | `ass` | `clewig.fr` | `http://dashboard:80` |
+   | `ass-api` | `clewig.fr` | `http://backend:8080` |
+
+   Use `http://` (Cloudflare provides HTTPS, and the tunnel is already encrypted) and the service names, not `localhost`: `cloudflared` reaches them over the Compose network. If your interface has a separate Type field, choose `HTTP` and enter `dashboard:80` / `backend:8080`.
 
    Cloudflare creates the DNS records and the HTTPS certificates. `ass-api` rather than `api.ass` because the free certificate covers `*.clewig.fr` only, not `*.ass.clewig.fr`.
 
@@ -116,7 +124,7 @@ Put the private key in a file on the Pi (`age-key.txt`, `chmod 600`), then:
 ```bash
 docker compose stop backend
 docker compose run --rm -v ./age-key.txt:/key.txt:ro backup restore.sh            # newest daily backup
-docker compose run --rm -v ./age-key.txt:/key.txt:ro backup restore.sh weekly/ass-2026-11-22-0300.dump.age
+docker compose run --rm -v ./age-key.txt:/key.txt:ro backup restore.sh weekly/<a name from --list>
 docker compose start backend
 rm age-key.txt
 ```

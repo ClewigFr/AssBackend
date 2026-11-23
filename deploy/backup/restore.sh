@@ -24,8 +24,15 @@ fi
 
 tmp=/tmp/restore.dump
 trap 'rm -f "$tmp" "$tmp.age"' EXIT
+# On B2 a missing file looks like an empty folder, so rclone wouldn't fail: check first
+if [ -z "$(rclone lsf "$BACKUP_REMOTE/$path" 2> /dev/null)" ]; then
+  echo "Backup not found: $path. Available backups:" >&2
+  "$0" --list >&2
+  exit 1
+fi
 echo "Downloading $path"
 rclone copyto "$BACKUP_REMOTE/$path" "$tmp.age"
+[ -s "$tmp.age" ] || { echo "Download failed: $path" >&2; exit 1; }
 age -d -i "$key" -o "$tmp" "$tmp.age"
 
 if [ -n "$(psql -tAc "select 1 from pg_stat_activity where datname = current_database() and application_name like 'PostgreSQL JDBC%' limit 1")" ]; then
