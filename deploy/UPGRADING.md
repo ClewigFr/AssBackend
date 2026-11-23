@@ -113,7 +113,41 @@ Nothing extra to run: the migration happens in step 2 of "Backend only". But:
   3. move `data/postgres` aside;
   4. change the version in `docker-compose.yml` and in `backup/Dockerfile`;
   5. `docker compose up -d`, then restore the backup.
-- **Changes to `docker-compose.yml` itself**: run `git pull` in `~/AssBackend`, then `docker compose up -d`. Compose only recreates the services whose settings changed.
+- **Changes to the `deploy/` folder itself** (`docker-compose.yml`, backup scripts): see the next section.
+
+## Updating the deploy folder
+
+The images come from GitHub, but `docker-compose.yml`, `.env.example` and the backup service (`backup/`, built on the Pi) come from this folder. When a commit changes them, bring them to the Pi.
+
+**If the Pi has a clone of the repository** (deploy key):
+```bash
+cd ~/AssBackend && git pull
+```
+
+**Otherwise, copy the folder from the Mac**:
+```bash
+rsync -av --exclude .env --exclude data --exclude backups --exclude age-key.txt \
+  ~/AndroidStudioProjects/AssBackend/deploy/ pi@raspberrypi.local:~/ass/
+```
+- Replace `pi@raspberrypi.local` with your user and the Pi's address, and `~/ass/` with the folder on the Pi.
+- Keep the `/` at the end of both paths: it copies the folder's content into `~/ass/` rather than creating `~/ass/deploy/`.
+- The excludes keep the Pi's own files: its `.env` with the secrets, the database (`data/`) and local backups. Don't use `--delete`, which would remove them.
+- Without rsync, use `scp`. The Mac's folder has no `.env`, `data/` or backups, so nothing of the Pi's is overwritten:
+  ```bash
+  cd ~/AndroidStudioProjects/AssBackend/deploy
+  scp -r docker-compose.yml .env.example backup README.md UPGRADING.md pi@raspberrypi.local:~/ass/
+  ```
+
+Then, on the Pi, apply the changes:
+```bash
+cd ~/ass        # or ~/AssBackend/deploy
+docker compose build backup
+docker compose up -d
+```
+Compose only recreates the services whose settings or image changed. Compare `.env.example` with your `.env` in case a new setting appeared:
+```bash
+diff <(grep -o '^[A-Z_]*=' .env.example | sort) <(grep -o '^[A-Z_]*=' .env | sort)
+```
 
 ## Cleaning up
 
