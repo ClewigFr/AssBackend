@@ -9,7 +9,9 @@ import com.ass.ingest.PageCache
 import com.ass.model.AppOut
 import com.ass.model.AppPagesOut
 import com.ass.model.AppsOut
+import com.ass.model.BatchPagesOut
 import com.ass.model.NameIn
+import com.ass.model.NamesIn
 import com.ass.model.PageOut
 import com.ass.model.User
 import com.ass.stats.MAX_PERIOD_OFFSET
@@ -29,6 +31,7 @@ import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.count
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.inList
+import org.jetbrains.exposed.v1.jdbc.batchInsert
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insertAndGetId
 import org.jetbrains.exposed.v1.jdbc.select
@@ -36,6 +39,7 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import java.util.UUID
 
 const val MAX_NAME_LENGTH = 255
+const val MAX_PAGES_PER_BATCH = 1000
 
 /**
  * Applications and their pages, all scoped to the logged-in user:
@@ -45,6 +49,7 @@ const val MAX_NAME_LENGTH = 255
  * GET    /apps/{app}                    -> {"app":{...},"pages":[{id,name}]}
  * DELETE /apps/{app}                    -> 204 (its pages and views too)
  * POST   /apps/{app}/pages {"name"}     -> 201 {id,name}
+ * POST   /apps/{app}/pages/batch {"names":[...]} -> 200 {"created":[{id,name}],"existing":[{id,name}]}
  * DELETE /apps/{app}/pages/{page}       -> 204 (its views too)
  * GET    /apps/{app}/stats?period=day|week|month|year&offset=0&tz=<minutes> -> stats of a period
  *
@@ -128,6 +133,32 @@ fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService) {
                 pageCache.added(id, app.id)
                 statsService.invalidate(app.id)
                 call.respond(HttpStatusCode.Created, PageOut(id, name))
+            }
+
+            // Creates the pages whose name isn't in the application yet, so importing the same list twice is harmless
+            post("/pages/batch") {
+                val user = requireUser(db) ?: return@post
+                val app = ownedApp(db, user) ?: return@post
+                val names = call.receiveNullable<NamesIn>()?.names?.map { it.trim() }?.filter { it.isNotEmpty() }?.distinct()
+                if (names.isNullOrEmpty() || names.size > MAX_PAGES_PER_BATCH || names.any { it.length > MAX_NAME_LENGTH }) {
+                    return@post call.respond(HttpStatusCode.BadRequest,
+                        "names: 1 to $MAX_PAGES_PER_BATCH names of at most $MAX_NAME_LENGTH characters")
+                }
+                val result = db.query {
+                    val existing = Pages.selectAll().where { (Pages.app eq app.id) and (Pages.name inList names) }
+                        .map { PageOut(it[Pages.id].value, it[Pages.name]) }
+                    val known = existing.map { it.name }.toSet()
+                    val created = names.filter { it !in known }.map { PageOut(UUID.randomUUID(), it) }
+                    Pages.batchInsert(created, shouldReturnGeneratedValues = false) { page ->
+                        this[Pages.id] = page.id
+                        this[Pages.name] = page.name
+                        this[Pages.app] = app.id
+                    }
+                    BatchPagesOut(created, existing.sortedBy { names.indexOf(it.name) })
+                }
+                result.created.forEach { pageCache.added(it.id, app.id) }
+                if (result.created.isNotEmpty()) statsService.invalidate(app.id)
+                call.respond(result)
             }
 
             delete("/pages/{page}") {

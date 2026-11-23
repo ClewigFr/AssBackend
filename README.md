@@ -147,6 +147,7 @@ On Heroku, the `Procfile` runs the shadow jar and `app.json` provisions PostgreS
 | `GET`    | `/apps/{app}` | owner | The application and its pages: `{"app":{...},"pages":[{"id","name"}]}` |
 | `DELETE` | `/apps/{app}` | owner | Delete the application, its pages and their views → `204` |
 | `POST`   | `/apps/{app}/pages` | owner | Add a page `{"name"}` → `201 {"id","name"}`. The id is what the app passes to `logScreen` |
+| `POST`   | `/apps/{app}/pages/batch` | owner | Add several pages `{"names":[...]}` (up to 1000) → `200 {"created":[{"id","name"}],"existing":[...]}`. Names already in the application aren't created again, so the same list can be imported twice |
 | `DELETE` | `/apps/{app}/pages/{page}` | owner | Delete a page and its views → `204` |
 | `GET`    | `/apps/{app}/stats` | owner | Stats for a period, see below |
 

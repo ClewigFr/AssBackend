@@ -34,6 +34,12 @@ data class PostPageViews(val app: JsonUUID? = null, val pageViews: List<PageView
 data class NameIn(val name: String? = null)
 
 @Serializable
+data class NamesIn(val names: List<String>? = null)
+
+@Serializable
+data class BatchPagesOut(val created: List<PageOut>, val existing: List<PageOut>)
+
+@Serializable
 data class AppOut(val id: JsonUUID, val name: String, val pages: Long = 0)
 
 @Serializable
