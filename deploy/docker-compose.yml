@@ -1,0 +1,95 @@
+# Anonymous Simple Stats on one small server (Raspberry Pi 5 or any arm64/amd64 Linux).
+# See README.md in this folder. Settings come from .env (copy .env.example).
+
+x-logging: &logging
+  # Small rotating logs: the SD card shouldn't fill up or wear out on logs
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ass
+      POSTGRES_USER: ass
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    # Tuned to write less to an SD card. synchronous_commit=off can lose the last
+    # few hundred ms of writes on a power cut, never corrupts the database.
+    command: >
+      postgres
+      -c shared_buffers=256MB
+      -c synchronous_commit=off
+      -c wal_compression=on
+      -c checkpoint_timeout=15min
+      -c max_wal_size=1GB
+      -c log_min_duration_statement=2000
+    volumes:
+      - ${DATA_DIR:-./data}/postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ass -d ass"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 1g
+    logging: *logging
+
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/clewigfr/assbackend:latest}
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      KTOR_ENV: prod
+      JDBC_DATABASE_URL: jdbc:postgresql://postgres:5432/ass?user=ass&password=${POSTGRES_PASSWORD}
+      SESSION_SIGN_KEY: ${SESSION_SIGN_KEY:?set SESSION_SIGN_KEY in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://ass.clewig.fr}
+      REGISTRATION_OPEN: ${REGISTRATION_OPEN:-false}
+    # Only reachable inside the stack (through the tunnel); 127.0.0.1 for checks on the Pi itself
+    ports: ["127.0.0.1:${BACKEND_LOCAL_PORT:-8099}:8080"]
+    mem_limit: 768m
+    logging: *logging
+
+  dashboard:
+    image: ${DASHBOARD_IMAGE:-ghcr.io/clewigfr/assfrontend:latest}
+    restart: unless-stopped
+    ports: ["127.0.0.1:${DASHBOARD_LOCAL_PORT:-8098}:80"]
+    mem_limit: 64m
+    logging: *logging
+
+  # Publishes the dashboard and the API over HTTPS without opening any port on the router.
+  # Public hostnames are set in the Cloudflare Zero Trust dashboard (see README.md).
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on: [backend, dashboard]
+    mem_limit: 128m
+    logging: *logging
+
+  # Nightly encrypted dump to object storage (Backblaze B2 by default), see backup/backup.sh
+  backup:
+    build: ./backup
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 3 * * *}
+      PGHOST: postgres
+      PGUSER: ass
+      PGDATABASE: ass
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      AGE_RECIPIENT: ${AGE_RECIPIENT:-}
+      BACKUP_REMOTE: ${BACKUP_REMOTE:-b2:${B2_BUCKET:-}}
+      RCLONE_CONFIG_B2_TYPE: b2
+      RCLONE_CONFIG_B2_ACCOUNT: ${B2_KEY_ID:-}
+      RCLONE_CONFIG_B2_KEY: ${B2_APP_KEY:-}
+      RCLONE_CONFIG_B2_HARD_DELETE: "true"
+      HEALTHCHECK_URL: ${HEALTHCHECK_URL:-}
+    volumes:
+      - ${BACKUP_LOCAL_DIR:-./backups}:/local
+    mem_limit: 256m
+    logging: *logging

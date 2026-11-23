@@ -10,6 +10,7 @@ import com.ass.db.migrateToApplications
 import com.ass.db.widenViewIds
 import com.ass.ingest.PageCache
 import com.ass.ingest.ViewIngestor
+import com.ass.routing.health
 import com.ass.routing.root
 import com.ass.stats.StatsService
 import io.ktor.http.HttpHeaders
@@ -79,6 +80,7 @@ fun Application.module() {
     installModule()
     routing {
         root()
+        health(db)
         pageViews(pageCache, ingestor, rateLimited = viewsRateLimit > 0)
         apps(db, pageCache, statsService)
         login(db)

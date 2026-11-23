@@ -183,6 +183,10 @@ When upgrading an existing database, pages created before applications are moved
 
 Passwords are hashed with bcrypt. Accounts created before bcrypt still have the old hashes, which are checked once more and upgraded to bcrypt the next time the user logs in.
 
+## Self-hosting
+
+[`deploy/`](deploy/README.md) runs everything (PostgreSQL, API, dashboard, Cloudflare Tunnel, nightly encrypted backups) on a Raspberry Pi 5 or any small Linux server with Docker Compose. `GET /health` answers `200` when the database is reachable, for container health checks.
+
 ## Hosting options considered
 
 - Heroku: https://www.heroku.com/
