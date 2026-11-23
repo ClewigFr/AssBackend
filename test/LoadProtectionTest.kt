@@ -1,5 +1,10 @@
 package com.ass
 
+import io.ktor.http.contentType
+import io.ktor.http.ContentType
+import io.ktor.client.request.setBody
+import io.ktor.client.request.header
+import io.ktor.client.request.post
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.client.request.request
@@ -27,6 +32,32 @@ class LoadProtectionTest {
         assertEquals(HttpStatusCode.OK, call(HttpMethod.Post, "/views", json = body).status)
         assertEquals(HttpStatusCode.OK, call(HttpMethod.Post, "/views", json = body).status)
         assertEquals(HttpStatusCode.TooManyRequests, call(HttpMethod.Post, "/views", json = body).status)
+    }
+
+    /**
+     * Behind Cloudflare (tunnel), X-Forwarded-For is "<whatever the client sent>, <real client IP>":
+     * the rate limit must count the last entry, so each client has its own limit and can't dodge it
+     * by sending a fake X-Forwarded-For.
+     */
+    @Test
+    fun rateLimitUsesTheLastForwardedAddressInProduction() = withServer(
+        "ktor.environment" to "prod",
+        "ktor.security.session_sign_key" to "00".repeat(32),
+        "ktor.performance.views_rate_limit" to "2"
+    ) {
+        // Unknown page: answered 400 when allowed, 429 when rate limited, nothing is stored
+        val body = """{"pageViews":[${viewJson(java.util.UUID.randomUUID().toString())}]}"""
+        suspend fun post(forwardedFor: String) = client.post("/views") {
+            header("X-Forwarded-For", forwardedFor)
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.status
+        assertEquals(HttpStatusCode.BadRequest, post("9.9.9.9, 1.1.1.1"))
+        assertEquals(HttpStatusCode.BadRequest, post("8.8.8.8, 1.1.1.1"))
+        // Same real client, different fake first entry: still limited
+        assertEquals(HttpStatusCode.TooManyRequests, post("7.7.7.7, 1.1.1.1"))
+        // Another client has its own limit
+        assertEquals(HttpStatusCode.BadRequest, post("9.9.9.9, 2.2.2.2"))
     }
 
     @Test
