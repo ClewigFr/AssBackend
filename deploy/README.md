@@ -68,6 +68,7 @@ Fill in `.env`:
 - `SESSION_SIGN_KEY`: `openssl rand -hex 32`
 - `TUNNEL_TOKEN`: from step 3
 - the backup settings, see [Nightly backups](#5-nightly-backups) (you can do that later: until then the backup service only logs an error each night)
+- optionally `RETENTION_DAYS` (default `90`): raw page views, with their session ids, are kept that many days, then turned into views per page and per day. Stats of older periods still show views, but no sessions or durations. `0` keeps everything. See "Data retention" in the [main README](../README.md#data-retention)
 
 If the GitHub packages are private, log in once with a token that has `read:packages`: `docker login ghcr.io -u ClewigFr`. Or make both packages public in GitHub, under Packages > Package settings.
 
@@ -115,7 +116,7 @@ Setup, once:
    docker compose run --rm backup restore.sh --list
    ```
 
-Size: about tens of MB per million views, so 10 GB lasts a long time.
+Size: about tens of MB per million views. With the default 90-day retention, older views are only kept as one row per page and per day, so the database, and the backups, stop growing with traffic. 10 GB lasts a long time.
 
 ### Restore
 
