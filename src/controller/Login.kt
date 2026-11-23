@@ -8,6 +8,8 @@ import com.ass.dao.userNameValid
 import com.ass.dao.verifyUser
 import com.ass.db.Db
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.plugins.origin
+import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.request.receiveParameters
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -20,7 +22,7 @@ import io.ktor.server.sessions.sessions
 /**
  * Registers the [Login] and [Logout] routes '/login' and '/logout'.
  */
-fun Route.login(db: Db) {
+fun Route.login(db: Db, rateLimited: Boolean) {
     /**
      * A GET request to the [Login], would respond with the login page
      */
@@ -38,12 +40,13 @@ fun Route.login(db: Db) {
         /**
          * A POST request to the [Login] actually processes the [Parameters] to validate them, if valid it sets the session.
          */
-        post {
+        limitedTo(rateLimited) { post {
+            val client = call.request.origin.remoteHost
             val post = call.receiveParameters()
             val userId = post["userId"] ?: ""
             val password = post["password"] ?: ""
 
-            if (LoginThrottle.isLocked(userId)) {
+            if (LoginThrottle.isLocked(userId, client)) {
                 return@post call.respond(HttpStatusCode.TooManyRequests, "Too many failed attempts, try again later")
             }
 
@@ -55,14 +58,14 @@ fun Route.login(db: Db) {
             }
 
             if (login == null) {
-                LoginThrottle.recordFailure(userId)
+                LoginThrottle.recordFailure(userId, client)
                 call.respond(HttpStatusCode.Unauthorized, "Invalid username or password")
             } else {
-                LoginThrottle.recordSuccess(userId)
+                LoginThrottle.recordSuccess(userId, client)
                 call.startSession(login.email)
                 call.respond("Logged")
             }
-        }
+        } }
     }
 
     route("/logout") {
@@ -75,3 +78,10 @@ fun Route.login(db: Db) {
         }
     }
 }
+
+/** POST /login and /register cost a bcrypt hash each: limited per client IP (see AUTH_RATE_LIMIT). */
+internal fun Route.limitedTo(rateLimited: Boolean, build: Route.() -> Unit) {
+    if (rateLimited) rateLimit(AUTH_RATE_LIMIT, build) else build()
+}
+
+val AUTH_RATE_LIMIT = io.ktor.server.plugins.ratelimit.RateLimitName("auth")

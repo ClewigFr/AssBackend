@@ -10,6 +10,7 @@ import com.ass.db.Db
 import com.ass.db.migrateToApplications
 import com.ass.db.widenViewIds
 import com.ass.ingest.PageCache
+import com.ass.ingest.ViewBudget
 import com.ass.ingest.ViewIngestor
 import com.ass.routing.health
 import com.ass.routing.root
@@ -98,10 +99,10 @@ fun Application.module() {
     routing {
         root()
         health(db)
-        pageViews(pageCache, ingestor, rateLimited = viewsRateLimit > 0)
+        pageViews(pageCache, ingestor, ViewBudget(configInt("ktor.performance.views_per_minute", 20_000)), rateLimited = viewsRateLimit > 0)
         apps(db, pageCache, statsService)
-        login(db)
-        register(db)
+        login(db, rateLimited = authRateLimit > 0)
+        register(db, rateLimited = authRateLimit > 0)
     }
 }
 
@@ -116,6 +117,9 @@ private fun Application.configInt(path: String, default: Int) =
 
 /** Max POST /views per client IP per minute; 0 disables the limit. */
 private val Application.viewsRateLimit get() = configInt("ktor.performance.views_rate_limit", 600)
+
+/** Max POST /login and POST /register per client IP per minute; 0 disables the limit. */
+private val Application.authRateLimit get() = configInt("ktor.performance.auth_rate_limit", 10)
 
 // Install module
 fun Application.installModule() {
@@ -180,10 +184,15 @@ fun Application.installModule() {
     }
 
     val limit = viewsRateLimit
-    if (limit > 0) {
+    val authLimit = authRateLimit
+    if (limit > 0 || authLimit > 0) {
         install(RateLimit) {
-            register(VIEWS_RATE_LIMIT) {
+            if (limit > 0) register(VIEWS_RATE_LIMIT) {
                 rateLimiter(limit = limit, refillPeriod = 60.seconds)
+                requestKey { call -> call.request.origin.remoteHost }
+            }
+            if (authLimit > 0) register(AUTH_RATE_LIMIT) {
+                rateLimiter(limit = authLimit, refillPeriod = 60.seconds)
                 requestKey { call -> call.request.origin.remoteHost }
             }
         }

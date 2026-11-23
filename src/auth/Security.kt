@@ -33,33 +33,46 @@ fun isSessionValid(session: ASSSession, now: Long = System.currentTimeMillis()):
 
 /**
  * In-memory brute-force protection for login: after [MAX_FAILURES] failed attempts on an
- * account, further attempts are refused for [LOCK_MS]. Resets on a successful login.
+ * account from one client IP, further attempts from that IP are refused for [LOCK_MS].
+ * Keyed by (account, IP) so a stranger can't lock the real user out; guessing from many
+ * accounts or IPs is bounded by the per-IP rate limit on /login. Resets on a successful login.
  * Per instance only; good enough for a single dyno.
  */
 object LoginThrottle {
     const val MAX_FAILURES = 5
     const val LOCK_MS = 15L * 60 * 1000
+    /** Bounds memory when an attacker tries many accounts: stale entries go first. */
+    const val MAX_ENTRIES = 10_000
 
-    private class Entry(var failures: Int, var lockedUntil: Long)
+    private class Entry(var failures: Int, var lockedUntil: Long, var lastFailure: Long)
     private val entries = ConcurrentHashMap<String, Entry>()
 
-    private fun key(email: String) = email.trim().lowercase()
+    private fun key(email: String, client: String) = client + "|" + email.trim().lowercase()
 
-    fun isLocked(email: String, now: Long = System.currentTimeMillis()): Boolean =
-        (entries[key(email)]?.lockedUntil ?: 0) > now
+    fun isLocked(email: String, client: String, now: Long = System.currentTimeMillis()): Boolean =
+        (entries[key(email, client)]?.lockedUntil ?: 0) > now
 
-    fun recordFailure(email: String, now: Long = System.currentTimeMillis()) {
-        entries.compute(key(email)) { _, e ->
-            val entry = if (e == null || (e.lockedUntil in 1..now)) Entry(0, 0) else e
+    fun recordFailure(email: String, client: String, now: Long = System.currentTimeMillis()) {
+        if (entries.size >= MAX_ENTRIES) {
+            // Forget failures older than a lock period and expired locks, then everything if still full
+            entries.entries.removeIf { it.value.lockedUntil <= now && now - it.value.lastFailure > LOCK_MS }
+            if (entries.size >= MAX_ENTRIES) entries.clear()
+        }
+        entries.compute(key(email, client)) { _, e ->
+            val entry = if (e == null || (e.lockedUntil in 1..now)) Entry(0, 0, now) else e
             entry.failures++
+            entry.lastFailure = now
             if (entry.failures >= MAX_FAILURES) entry.lockedUntil = now + LOCK_MS
             entry
         }
     }
 
-    fun recordSuccess(email: String) {
-        entries.remove(key(email))
+    fun recordSuccess(email: String, client: String) {
+        entries.remove(key(email, client))
     }
+
+    /** For tests. */
+    val size get() = entries.size
 
     /** For tests. */
     fun reset() = entries.clear()

@@ -31,6 +31,7 @@ fun withServer(vararg extraConfig: Pair<String, String>, test: suspend Applicati
                 "ktor.security.cors_origins" to DASHBOARD,
                 "ktor.performance.flush_interval_ms" to "10",
                 "ktor.performance.stats_cache_ms" to "0",
+                "ktor.performance.auth_rate_limit" to "0",
                 *extraConfig
             )
         }

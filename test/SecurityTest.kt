@@ -30,9 +30,33 @@ class SecurityTest {
     fun lockExpires() {
         LoginThrottle.reset()
         val t0 = 1_000_000L
-        repeat(LoginThrottle.MAX_FAILURES) { LoginThrottle.recordFailure("A@x.io ", t0) }
-        assertTrue(LoginThrottle.isLocked("a@x.io", t0 + 1))
-        assertFalse(LoginThrottle.isLocked("a@x.io", t0 + LoginThrottle.LOCK_MS + 1))
+        repeat(LoginThrottle.MAX_FAILURES) { LoginThrottle.recordFailure("A@x.io ", "1.1.1.1", t0) }
+        assertTrue(LoginThrottle.isLocked("a@x.io", "1.1.1.1", t0 + 1))
+        assertFalse(LoginThrottle.isLocked("a@x.io", "1.1.1.1", t0 + LoginThrottle.LOCK_MS + 1))
+    }
+
+    @Test
+    fun aStrangerCannotLockTheRealUserOut() {
+        LoginThrottle.reset()
+        repeat(LoginThrottle.MAX_FAILURES) { LoginThrottle.recordFailure("a@x.io", "6.6.6.6", 1000) }
+        assertTrue(LoginThrottle.isLocked("a@x.io", "6.6.6.6", 1001))
+        assertFalse(LoginThrottle.isLocked("a@x.io", "1.1.1.1", 1001))
+    }
+
+    @Test
+    fun throttleMemoryIsBounded() {
+        LoginThrottle.reset()
+        repeat(LoginThrottle.MAX_ENTRIES * 2) { LoginThrottle.recordFailure("u$it@x.io", "6.6.6.6", 1000) }
+        assertTrue(LoginThrottle.size <= LoginThrottle.MAX_ENTRIES)
+    }
+
+    @Test
+    fun loginIsRateLimitedPerClient() = withServer("ktor.performance.auth_rate_limit" to "3") {
+        repeat(3) {
+            assertEquals(HttpStatusCode.Unauthorized, postForm("/login", "userId" to "u$it@x.io", "password" to "wrongpw1").status)
+        }
+        assertEquals(HttpStatusCode.TooManyRequests, postForm("/login", "userId" to "z@x.io", "password" to "wrongpw1").status)
+        assertEquals(HttpStatusCode.TooManyRequests, postForm("/register", "email" to "z@x.io", "password" to "secret123").status)
     }
 
     @Test

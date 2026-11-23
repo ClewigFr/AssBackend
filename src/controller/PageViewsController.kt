@@ -1,10 +1,12 @@
 package com.ass.controller
 
 import com.ass.ingest.PageCache
+import com.ass.ingest.ViewBudget
 import com.ass.ingest.ViewIngestor
 import com.ass.ingest.ViewRow
 import com.ass.model.PostPageViews
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.plugins.origin
 import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.request.receiveNullable
@@ -12,8 +14,12 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.post
 
-/** Largest batch accepted, to bound memory per request (the Android client sends ~20). */
-const val MAX_VIEWS_PER_REQUEST = 5000
+/**
+ * Largest batch accepted, to bound memory and abuse per request. The Android client sends ~20,
+ * and at most its whole retry file (capped at 1000 views) when retrying: never go below that,
+ * a 400 makes the client drop the batch.
+ */
+const val MAX_VIEWS_PER_REQUEST = 1000
 
 /** Oldest view accepted, as ms elapsed: the client may keep failed batches on disk for a while. */
 const val MAX_VIEW_AGE_MS = 365L * 24 * 60 * 60 * 1000
@@ -24,18 +30,18 @@ val VIEWS_RATE_LIMIT = RateLimitName("views")
  * POST /views {"app","pageViews":[{"page","sessionId","timestamp"}]}, timestamp = ms elapsed since the view.
  * When "app" is given, only pages of that application are accepted. Clients that don't send it
  * (older library versions) are still accepted for any existing page.
- * 200: all views accepted, 206: some rejected, 400: none accepted, 429: rate limited,
+ * 200: all views accepted, 206: some rejected, 400: none accepted, 429: rate limited (requests or views per minute),
  * 503: write buffer full. The Android client retries on anything but 200/206/400.
  */
-fun Route.pageViews(pageCache: PageCache, ingestor: ViewIngestor, rateLimited: Boolean) {
+fun Route.pageViews(pageCache: PageCache, ingestor: ViewIngestor, budget: ViewBudget, rateLimited: Boolean) {
     if (rateLimited) {
-        rateLimit(VIEWS_RATE_LIMIT) { viewsRoute(pageCache, ingestor) }
+        rateLimit(VIEWS_RATE_LIMIT) { viewsRoute(pageCache, ingestor, budget) }
     } else {
-        viewsRoute(pageCache, ingestor)
+        viewsRoute(pageCache, ingestor, budget)
     }
 }
 
-private fun Route.viewsRoute(pageCache: PageCache, ingestor: ViewIngestor) {
+private fun Route.viewsRoute(pageCache: PageCache, ingestor: ViewIngestor, budget: ViewBudget) {
     post("/views") {
         val body = call.receiveNullable<PostPageViews>()
         val hits = body?.pageViews.orEmpty()
@@ -57,6 +63,7 @@ private fun Route.viewsRoute(pageCache: PageCache, ingestor: ViewIngestor) {
         }
         val status = when {
             rows.isEmpty() -> HttpStatusCode.BadRequest
+            !budget.take(call.request.origin.remoteHost, rows.size, now) -> HttpStatusCode.TooManyRequests
             !ingestor.offer(rows) -> HttpStatusCode.ServiceUnavailable
             rows.size == hits.size -> HttpStatusCode.OK
             else -> HttpStatusCode.PartialContent

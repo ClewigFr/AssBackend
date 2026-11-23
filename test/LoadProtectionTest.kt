@@ -34,6 +34,21 @@ class LoadProtectionTest {
         assertEquals(HttpStatusCode.TooManyRequests, call(HttpMethod.Post, "/views", json = body).status)
     }
 
+    @Test
+    fun viewsPerMinuteAreLimitedPerClient() = withServer("ktor.performance.views_per_minute" to "3") {
+        val page = appWithPage(registerAndLogin("a@x.io")).second
+        val two = """{"pageViews":[${viewJson(page)},${viewJson(page)}]}"""
+        assertEquals(HttpStatusCode.OK, call(HttpMethod.Post, "/views", json = two).status)
+        assertEquals(HttpStatusCode.TooManyRequests, call(HttpMethod.Post, "/views", json = two).status)
+    }
+
+    @Test
+    fun aFullRetryFileIsAccepted() = withServer {
+        val page = appWithPage(registerAndLogin("a@x.io")).second
+        val views = (1..1000).joinToString(",") { viewJson(page) }
+        assertEquals(HttpStatusCode.OK, call(HttpMethod.Post, "/views", json = """{"pageViews":[$views]}""").status)
+    }
+
     /**
      * Behind Cloudflare (tunnel), X-Forwarded-For is "<whatever the client sent>, <real client IP>":
      * the rate limit must count the last entry, so each client has its own limit and can't dodge it

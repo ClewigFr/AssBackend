@@ -19,7 +19,7 @@ import io.ktor.server.routing.route
 /**
  * Register routes for user registration in the [Register] route (/register)
  */
-fun Route.register(db: Db) {
+fun Route.register(db: Db, rateLimited: Boolean) {
     /**
      * A POST request to the [Register] route, will try to create a new user.
      *
@@ -30,7 +30,7 @@ fun Route.register(db: Db) {
      *   it stores a hash of the password.
      */
     route("/register") {
-        post {
+        limitedTo(rateLimited) { post {
             // get current from session data if any
             if (!call.application.registrationOpen) {
                 return@post call.respond(HttpStatusCode.Forbidden, "Registration is closed")
@@ -70,7 +70,7 @@ fun Route.register(db: Db) {
                     call.respond(HttpStatusCode.Created, "User $email created")
                 }
             }
-        }
+        } }
 
         /**
          * A GET request would show the registration form (with an error if specified by the URL in the case there was an error in the form processing)

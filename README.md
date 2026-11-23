@@ -16,6 +16,8 @@ Everything is set through environment variables, which are read in `resources/ap
 | `FLUSH_INTERVAL_MS` | no              | `200`              | How often buffered page views are written to the database |
 | `INGEST_CAPACITY`   | no              | `500000`           | Max page views waiting to be written; beyond that `/views` answers `503` |
 | `VIEWS_RATE_LIMIT`  | no              | `600`              | Max `POST /views` per client IP per minute (`0` disables it) |
+| `VIEWS_PER_MINUTE`  | no              | `20000`            | Max page views accepted per client IP per minute, answered `429` beyond (`0` disables it; keep it above 1000, the largest batch) |
+| `AUTH_RATE_LIMIT`   | no              | `10`               | Max `POST /login` and `POST /register` per client IP per minute (`0` disables it) |
 | `STATS_CACHE_MS`    | no              | `5000`             | How long stats results are cached (`0` disables the cache) |
 | `RETENTION_DAYS`    | no              | `90`               | How long raw page views (with their session ids) are kept. Older ones become views per page and per day, see [Data retention](#data-retention). `0` keeps everything |
 | `KTOR_ENV`          | no              | `dev`              | `dev` uses H2; any other value uses PostgreSQL |
@@ -62,7 +64,7 @@ The server is built to absorb large volumes of page views with little memory:
 - **Page ids are kept in memory**, so validating a view never queries the database.
 - **Connection pool** (HikariCP), with queries run on a dedicated thread pool of the same size, so a slow database never blocks request handling.
 - **Stats are computed in SQL** (counts per page and per day) and **cached** for `STATS_CACHE_MS`. The response size depends on the number of pages and days, not on the number of views.
-- **gzip** for responses over 1 KB, **per-IP rate limit** on `/views`, and logs written asynchronously at `INFO` level.
+- **gzip** for responses over 1 KB, **per-IP rate limits** on `/views` (requests and views per minute, at most 1000 views per request), `/login` and `/register`, and logs written asynchronously at `INFO` level.
 - **JVM** (`Procfile`): `-XX:+UseSerialGC -XX:MaxRAMPercentage=75 -Xss512k`, tuned for small containers.
 
 Measured locally with ApacheBench (H2 in memory, so absolute numbers will differ on PostgreSQL):
