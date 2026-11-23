@@ -1,12 +1,14 @@
 package com.ass.stats
 
 import com.ass.dao.Pages
+import com.ass.dao.PagesDaily
 import com.ass.dao.PagesViews
 import com.ass.db.Db
 import com.ass.model.Bucket
 import com.ass.model.PageStat
 import com.ass.model.PeriodStats
 import com.ass.model.Summary
+import com.ass.retention.Retention
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.jetbrains.exposed.v1.core.Op
@@ -24,6 +26,7 @@ import org.jetbrains.exposed.v1.core.max
 import org.jetbrains.exposed.v1.core.min
 import org.jetbrains.exposed.v1.core.minus
 import org.jetbrains.exposed.v1.core.plus
+import org.jetbrains.exposed.v1.core.sum
 import org.jetbrains.exposed.v1.jdbc.JdbcTransaction
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -43,7 +46,7 @@ const val MAX_PERIOD_OFFSET = 1000
  * (app, timestamp) index; nothing proportional to the number of views or sessions leaves the
  * database. Results are cached for [cacheMs] per (app, period, offset, time zone).
  */
-class StatsService(private val db: Db, private val cacheMs: Long = 5_000) {
+class StatsService(private val db: Db, private val cacheMs: Long = 5_000, private val retention: Retention? = null) {
     private data class Key(val app: UUID, val period: Period, val offset: Int, val tz: Long)
     private class Cached(val at: Long, val value: PeriodStats)
     private val cache = ConcurrentHashMap<Key, Cached>()
@@ -66,6 +69,9 @@ class StatsService(private val db: Db, private val cacheMs: Long = 5_000) {
     /** Forget cached results for [app] (after its pages change). */
     fun invalidate(app: UUID) = cache.keys.removeIf { it.app == app }
 
+    /** Forget every cached result (after old views were rolled up). */
+    fun invalidateAll() = cache.clear()
+
     private suspend fun computeUncached(app: UUID, period: Period, offset: Int, tz: Long): PeriodStats {
         val now = System.currentTimeMillis()
         val range = rangeOf(period, offset, tz, now)
@@ -77,10 +83,11 @@ class StatsService(private val db: Db, private val cacheMs: Long = 5_000) {
                 offset = offset,
                 from = range.from,
                 to = range.to,
-                current = summary(app, range),
-                previous = summary(app, previousRange),
+                current = summary(app, range, tz),
+                previous = summary(app, previousRange, tz),
                 buckets = buckets(app, range, period.granularity, tz),
-                pages = pages(app, range)
+                pages = pages(app, range, tz),
+                detailFrom = retention?.detailFrom(now)
             )
         }
     }
@@ -89,11 +96,23 @@ class StatsService(private val db: Db, private val cacheMs: Long = 5_000) {
         (PagesViews.app eq app) and (PagesViews.timestamp greaterEq range.from) and (PagesViews.timestamp less range.to)
 
     /**
+     * Daily counts (views older than the retention period) of the days whose date, in the viewer's
+     * time zone, falls in the range. A daily row covers a UTC day, so it's placed on the same date.
+     */
+    private fun dailyInRange(app: UUID, range: Range, tz: Long): Op<Boolean> =
+        (PagesDaily.app eq app) and (PagesDaily.day greaterEq range.from + tz) and (PagesDaily.day less range.to + tz)
+
+    private fun JdbcTransaction.dailyViews(app: UUID, range: Range, tz: Long): Long {
+        val sum = PagesDaily.views.sum()
+        return PagesDaily.select(sum).where { dailyInRange(app, range, tz) }.single()[sum] ?: 0
+    }
+
+    /**
      * Sessions of the range, one row each, as a subquery: start, duration and number of views.
      * A session belongs to the range when its views do (a session crossing a boundary counts
      * on both sides, with the views it had in each).
      */
-    private fun JdbcTransaction.summary(app: UUID, range: Range): Summary {
+    private fun JdbcTransaction.summary(app: UUID, range: Range, tz: Long): Summary {
         val views = PagesViews.id.count().alias("n")
         val duration = (PagesViews.timestamp.max() - PagesViews.timestamp.min()).alias("dur")
         val sessions = PagesViews.select(PagesViews.sessionId, views, duration)
@@ -110,8 +129,9 @@ class StatsService(private val db: Db, private val cacheMs: Long = 5_000) {
         val bounces = if (n == 0L) 0L else
             sessions.select(sessionCount).where { sessions[views] eq 1L }.single()[sessionCount]
 
+        // Session figures only use raw views; daily counts (older data) only add to the views
         return Summary(
-            views = viewCount,
+            views = viewCount + dailyViews(app, range, tz),
             sessions = n,
             pagesPerSession = if (n == 0L) 0.0 else viewCount.toDouble() / n,
             avgSessionMs = row[avgDuration]?.toLong() ?: 0,
@@ -154,21 +174,34 @@ class StatsService(private val db: Db, private val cacheMs: Long = 5_000) {
             if (i >= 0) sessions[i] += it[sessionCount]
         }
 
+        // Daily counts only fit day and month slots: in a single day (hour slots) they're only in the summary
+        if (granularity != Granularity.HOUR) {
+            val sum = PagesDaily.views.sum()
+            PagesDaily.select(PagesDaily.day, sum).where { dailyInRange(app, range, tz) }.groupBy(PagesDaily.day).forEach {
+                val i = range.bucketIndex(it[PagesDaily.day] - tz)
+                if (i >= 0) views[i] += it[sum] ?: 0
+            }
+        }
+
         return range.bucketStarts.mapIndexed { i, start -> Bucket(start, views[i], sessions[i]) }
     }
 
     /** Every page of the application with its views and the sessions that saw it; busiest first. */
-    private fun JdbcTransaction.pages(app: UUID, range: Range): List<PageStat> {
+    private fun JdbcTransaction.pages(app: UUID, range: Range, tz: Long): List<PageStat> {
         val views = PagesViews.id.count()
         val sessions = PagesViews.sessionId.countDistinct()
         val perPage = PagesViews.select(PagesViews.page, views, sessions)
             .where { inRange(app, range) }
             .groupBy(PagesViews.page)
             .associate { it[PagesViews.page].value to (it[views] to it[sessions]) }
+        val dailySum = PagesDaily.views.sum()
+        val dailyPerPage = PagesDaily.select(PagesDaily.page, dailySum).where { dailyInRange(app, range, tz) }
+            .groupBy(PagesDaily.page)
+            .associate { it[PagesDaily.page].value to (it[dailySum] ?: 0L) }
         return Pages.selectAll().where { Pages.app eq app }.map {
             val id = it[Pages.id].value
             val (v, s) = perPage[id] ?: (0L to 0L)
-            PageStat(id, it[Pages.name], v, s)
+            PageStat(id, it[Pages.name], v + (dailyPerPage[id] ?: 0L), s)
         }.sortedWith(compareByDescending<PageStat> { it.views }.thenBy { it.name })
     }
 }

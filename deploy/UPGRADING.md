@@ -85,6 +85,14 @@ Nothing extra to run: the migration happens in step 2 of "Backend only". But:
   An error here stops the backend, and the container keeps restarting. Roll back (below) and send me the log.
 - **Rolling back after a database change.** The previous backend version usually still works, because migrations only add tables and columns. If it doesn't, restore the backup taken just before. Views received since that backup are lost.
 
+### Versions with data retention (daily counts)
+
+The first backend version with `RETENTION_DAYS` creates the `pagesdaily` table on start. One minute later, it **rolls up every raw view older than 90 days into daily counts and deletes them**. That can't be undone, so:
+- back up first (as always), and keep that backup if you may want the old session detail one day;
+- to keep everything for now, set `RETENTION_DAYS=0` in `.env` before updating, and choose later.
+
+Expect `Rolled up N page views older than 90 days into daily counts` in the logs. Rolling back to an older backend afterwards works, but it ignores the daily counts: periods older than 90 days then look empty.
+
 ## Rolling back
 
 1. Pin the previous version in `.env`:

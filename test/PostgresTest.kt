@@ -71,6 +71,18 @@ class PostgresTest {
         assertEquals(0.5, week.current.bounceRate)
         assertEquals(listOf("home" to 2L, "cart" to 1L), week.pages.map { it.name to it.views })
 
+        // Retention: views older than 90 days become daily counts, twice on the same day (insert, then update)
+        val old = 120L * 24 * 60 * 60 * 1000
+        repeat(2) {
+            assertEquals(HttpStatusCode.OK, call(HttpMethod.Post, "/views", json = """{"app":"$app","pageViews":[${viewJson(home, old)},${viewJson(cart, old)}]}""").status)
+            awaitIngested()
+            assertEquals(1, retention().run())
+        }
+        val year = Json.decodeFromString<PeriodStats>(call(HttpMethod.Get, "/apps/$app/stats?period=year", alice).bodyAsText())
+        assertEquals(7, year.current.views)
+        assertEquals(7, year.buckets.sumOf { it.views })
+        assertEquals(listOf("home" to 4L, "cart" to 3L), year.pages.map { it.name to it.views })
+
         assertEquals(HttpStatusCode.NoContent, call(HttpMethod.Delete, "/apps/$app/pages/$cart", alice).status)
         assertEquals(HttpStatusCode.NoContent, call(HttpMethod.Delete, "/apps/$app", alice).status)
     }
@@ -106,7 +118,7 @@ class PostgresTest {
 
         assertEquals("bigint", query(url, "SELECT data_type FROM information_schema.columns WHERE table_name = 'pagesviews' AND column_name = 'id'") { it.next(); it.getString(1) })
         assertEquals("bigint", query(url, "SELECT data_type FROM information_schema.sequences WHERE sequence_name = 'pagesviews_id_seq'") { it.next(); it.getString(1) })
-        assertEquals(listOf("apps", "pages", "pagesviews", "users"),
+        assertEquals(listOf("apps", "pages", "pagesdaily", "pagesviews", "users"),
             query(url, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY 1") { rs ->
                 generateSequence { if (rs.next()) rs.getString(1) else null }.toList()
             })

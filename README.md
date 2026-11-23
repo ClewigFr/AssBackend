@@ -17,6 +17,7 @@ Everything is set through environment variables, which are read in `resources/ap
 | `INGEST_CAPACITY`   | no              | `500000`           | Max page views waiting to be written; beyond that `/views` answers `503` |
 | `VIEWS_RATE_LIMIT`  | no              | `600`              | Max `POST /views` per client IP per minute (`0` disables it) |
 | `STATS_CACHE_MS`    | no              | `5000`             | How long stats results are cached (`0` disables the cache) |
+| `RETENTION_DAYS`    | no              | `90`               | How long raw page views (with their session ids) are kept. Older ones become views per page and per day, see [Data retention](#data-retention). `0` keeps everything |
 | `KTOR_ENV`          | no              | `dev`              | `dev` uses H2; any other value uses PostgreSQL |
 | `PORT`              | no              | `8080`             | HTTP port                                |
 
@@ -71,6 +72,17 @@ Measured locally with ApacheBench (H2 in memory, so absolute numbers will differ
 | `POST /views` (20 views per request, 50 concurrent) | 1,117 req/s, p99 156 ms | **4,722 req/s** (≈94,000 views/s), p99 62 ms |
 | Stats with ~140k views stored (one year, with comparison) | 16 req/s, 17.5 MB per response | **321 req/s, ~1 KB** (cached; 18 req/s when every request recomputes) |
 | Server memory after the load | 5.3 GB | **335 MB** |
+
+### Data retention
+
+Raw page views, each with its random session id, are kept for `RETENTION_DAYS` (90 by default). After that, they're **rolled up into views per page and per day** (table `pagesdaily`), then deleted:
+
+- A background task does it 1 minute after the server starts, then every 6 hours, one day per transaction. A day is moved atomically, so stats never count a view twice. A late upload of an old view is added to its day on the next run.
+- Days are UTC days. In the stats, a daily count is shown on its date in the viewer's time zone.
+- Stats keep counting the views of older periods (totals, day and month slots, per page). Sessions, pages per session, durations, bounce rate and hourly detail only exist for the last `RETENTION_DAYS` days. The stats response gives `detailFrom`, the instant before which only daily counts exist, and the dashboard explains it.
+- Less personal data kept (no session trail after 90 days), and a database that stays small: one row per page and per day, whatever the traffic.
+- Deleting a page or an application deletes its daily counts too.
+- **The rollup can't be undone.** Raising `RETENTION_DAYS` later only keeps more detail from then on.
 
 ### Cookies across sites
 
@@ -169,6 +181,7 @@ Another user's application answers `404`, exactly like one that doesn't exist.
 The response has:
 - `current` and `previous` (the period just before, of the same length): `views`, `sessions`, `pagesPerSession`, `avgSessionMs` (time between the first and last view of a session; a single-view session counts as 0), and `bounceRate` (share of sessions with a single view);
 - `buckets`: `start` (epoch ms), `views` and `sessions` per slot. A session is counted in the slot where it started, so slots add up exactly;
+- `detailFrom`: before this instant (epoch ms), only views per page and per day are kept, see [Data retention](#data-retention). Session figures only cover the part of the period after it. `null` when `RETENTION_DAYS=0`;
 - `pages`: every page of the application with its `views` and the `sessions` that saw it, busiest first.
 
 There is no "users" figure: the library only knows a random session id per app launch, and nothing identifies a person or a device.

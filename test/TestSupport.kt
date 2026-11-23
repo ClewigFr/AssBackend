@@ -48,6 +48,9 @@ private val apps = java.util.Collections.synchronizedMap(java.util.WeakHashMap<A
 /** Wait until every accepted view has been written to the database. */
 suspend fun ApplicationTestBuilder.awaitIngested() = apps.getValue(this).attributes[IngestorKey].awaitIdle()
 
+/** The retention job of the running application. */
+fun ApplicationTestBuilder.retention() = apps.getValue(this).attributes[RetentionKey]
+
 suspend fun ApplicationTestBuilder.call(
     method: HttpMethod,
     path: String,

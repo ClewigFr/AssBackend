@@ -45,6 +45,7 @@ services:
       SESSION_SIGN_KEY: ${SESSION_SIGN_KEY:?set SESSION_SIGN_KEY in .env}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://ass.clewig.fr}
       REGISTRATION_OPEN: ${REGISTRATION_OPEN:-false}
+      RETENTION_DAYS: ${RETENTION_DAYS:-90}
     # Only reachable inside the stack (through the tunnel); 127.0.0.1 for checks on the Pi itself
     ports: ["127.0.0.1:${BACKEND_LOCAL_PORT:-8099}:8080"]
     mem_limit: 768m

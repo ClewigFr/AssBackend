@@ -85,5 +85,7 @@ data class PeriodStats(
     val current: Summary,
     val previous: Summary,
     val buckets: List<Bucket>,
-    val pages: List<PageStat>
+    val pages: List<PageStat>,
+    /** Before this instant only views per page and per day are kept (no sessions, hours or durations); null if everything is kept. */
+    val detailFrom: Long? = null
 )

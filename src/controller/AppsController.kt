@@ -3,6 +3,7 @@ package com.ass.controller
 import com.ass.auth.currentUser
 import com.ass.dao.Apps
 import com.ass.dao.Pages
+import com.ass.dao.PagesDaily
 import com.ass.dao.PagesViews
 import com.ass.db.Db
 import com.ass.ingest.PageCache
@@ -99,6 +100,7 @@ fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService) {
                 val app = ownedApp(db, user) ?: return@delete
                 db.query {
                     PagesViews.deleteWhere { PagesViews.app eq app.id }
+                    PagesDaily.deleteWhere { PagesDaily.app eq app.id }
                     Pages.deleteWhere { Pages.app eq app.id }
                     Apps.deleteWhere { Apps.id eq app.id }
                 }
@@ -170,6 +172,7 @@ fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService) {
                     val exists = Pages.selectAll().where { (Pages.id eq pageId) and (Pages.app eq app.id) }.any()
                     if (exists) {
                         PagesViews.deleteWhere { PagesViews.page eq pageId }
+                        PagesDaily.deleteWhere { PagesDaily.page eq pageId }
                         Pages.deleteWhere { Pages.id eq pageId }
                     }
                     exists

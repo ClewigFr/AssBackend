@@ -3,6 +3,7 @@ package com.ass
 import com.ass.controller.*
 import com.ass.dao.Apps
 import com.ass.dao.Pages
+import com.ass.dao.PagesDaily
 import com.ass.dao.PagesViews
 import com.ass.dao.Users
 import com.ass.db.Db
@@ -12,6 +13,7 @@ import com.ass.ingest.PageCache
 import com.ass.ingest.ViewIngestor
 import com.ass.routing.health
 import com.ass.routing.root
+import com.ass.retention.Retention
 import com.ass.stats.StatsService
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -22,6 +24,7 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.application.ApplicationStopping
 import io.ktor.server.application.install
+import io.ktor.server.application.log
 import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.plugins.ContentTransformationException
 import io.ktor.server.plugins.compression.Compression
@@ -40,6 +43,8 @@ import io.ktor.server.sessions.Sessions
 import io.ktor.server.sessions.cookie
 import io.ktor.util.AttributeKey
 import io.ktor.util.hex
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -48,6 +53,7 @@ import org.jetbrains.exposed.v1.jdbc.SchemaUtils
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.migration.jdbc.MigrationUtils
 import java.security.SecureRandom
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
@@ -75,7 +81,18 @@ fun Application.module() {
     monitor.subscribe(ApplicationStopping) { runBlocking { ingestor.close() } }
     monitor.subscribe(ApplicationStopped) { db.close() }
 
-    val statsService = StatsService(db, cacheMs = configInt("ktor.performance.stats_cache_ms", 5_000).toLong())
+    val retention = Retention(db, days = configInt("ktor.performance.retention_days", 90))
+    val statsService = StatsService(db, cacheMs = configInt("ktor.performance.stats_cache_ms", 5_000).toLong(), retention = retention)
+    retention.onChange = statsService::invalidateAll
+    attributes.put(RetentionKey, retention)
+    // Roll up old views shortly after start, then every 6 hours
+    if (retention.days > 0) launch {
+        delay(60.seconds)
+        while (true) {
+            try { retention.run() } catch (e: Exception) { log.error("Retention failed", e) }
+            delay(6.hours)
+        }
+    }
 
     installModule()
     routing {
@@ -87,6 +104,9 @@ fun Application.module() {
         register(db)
     }
 }
+
+/** The retention job of a running application (tests run it directly). */
+val RetentionKey = AttributeKey<Retention>("Retention")
 
 /** The ingestor of a running application (tests use it to wait for buffered writes). */
 val IngestorKey = AttributeKey<ViewIngestor>("ViewIngestor")
@@ -182,9 +202,9 @@ val Application.registrationOpen: Boolean
 // Database init: also adds columns introduced after the tables were first created
 fun databaseInitialization(db: Db) {
     transaction(db.database) {
-        SchemaUtils.create(Users, Apps, Pages, PagesViews)
+        SchemaUtils.create(Users, Apps, Pages, PagesViews, PagesDaily)
         // Add missing columns and indexes, but never drop anything automatically
-        MigrationUtils.statementsRequiredForDatabaseMigration(Users, Apps, Pages, PagesViews, withLogs = false)
+        MigrationUtils.statementsRequiredForDatabaseMigration(Users, Apps, Pages, PagesViews, PagesDaily, withLogs = false)
             .filterNot { it.trimStart().startsWith("DROP", ignoreCase = true) || it.contains(" DROP ", ignoreCase = true) }
             .forEach { exec(it) }
     }
