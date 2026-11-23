@@ -12,6 +12,7 @@ import com.ass.db.widenViewIds
 import com.ass.ingest.PageCache
 import com.ass.ingest.ViewBudget
 import com.ass.ingest.ViewIngestor
+import com.ass.model.AssJson
 import com.ass.routing.health
 import com.ass.routing.root
 import com.ass.retention.Retention
@@ -29,9 +30,11 @@ import io.ktor.server.application.log
 import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.plugins.ContentTransformationException
 import io.ktor.server.plugins.compression.Compression
+import io.ktor.server.plugins.compression.CompressionConfig
 import io.ktor.server.plugins.compression.gzip
 import io.ktor.server.plugins.compression.minimumSize
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.autohead.AutoHeadResponse
 import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
 import io.ktor.server.plugins.origin
@@ -166,13 +169,16 @@ fun Application.installModule() {
     }
 
     install(ContentNegotiation) {
-        json(Json {
-            ignoreUnknownKeys = true
-            explicitNulls = false
-        })
+        json(AssJson)
     }
 
+    // Responses only: POST /views decompresses its own body with a size cap (see ViewsBody.kt),
+    // the plugin's request decompression has no cap and would let a small gzip bomb fill memory
+    // Answer HEAD like GET without a body (uptime monitors such as UptimeRobot use HEAD)
+    install(AutoHeadResponse)
+
     install(Compression) {
+        mode = CompressionConfig.Mode.CompressResponse
         gzip { minimumSize(1024) }
     }
 

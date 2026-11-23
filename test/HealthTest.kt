@@ -13,4 +13,11 @@ class HealthTest {
         assertEquals(HttpStatusCode.OK, response.status)
         assertEquals("OK", response.bodyAsText())
     }
+
+    @Test
+    fun healthAnswersHeadForUptimeMonitors() = withServer {
+        val response = call(HttpMethod.Head, "/health")
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertEquals("", response.bodyAsText())
+    }
 }
