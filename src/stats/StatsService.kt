@@ -9,8 +9,9 @@ import com.ass.model.PageStat
 import com.ass.model.PeriodStats
 import com.ass.model.Summary
 import com.ass.retention.Retention
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.jetbrains.exposed.v1.core.Op
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.alias
@@ -46,23 +47,39 @@ const val MAX_PERIOD_OFFSET = 1000
  * (app, timestamp) index; nothing proportional to the number of views or sessions leaves the
  * database. Results are cached for [cacheMs] per (app, period, offset, time zone).
  */
+/** Stats computed at the same time, at most (each holds a database connection). */
+private const val MAX_CONCURRENT = 2
+
 class StatsService(private val db: Db, private val cacheMs: Long = 5_000, private val retention: Retention? = null) {
     private data class Key(val app: UUID, val period: Period, val offset: Int, val tz: Long)
     private class Cached(val at: Long, val value: PeriodStats)
     private val cache = ConcurrentHashMap<Key, Cached>()
-    private val computeLock = Mutex()
+    /** Computation in progress per key: concurrent requests for the same stats share it. */
+    private val inFlight = ConcurrentHashMap<Key, CompletableDeferred<PeriodStats>>()
+    /** Bounds the database work of stats, without one slow request blocking every other key. */
+    private val permits = Semaphore(MAX_CONCURRENT)
 
     suspend fun compute(app: UUID, period: Period, offset: Int = 0, tzOffsetMs: Long = 0): PeriodStats {
         if (cacheMs <= 0) return computeUncached(app, period, offset, tzOffsetMs)
         val key = Key(app, period, offset, tzOffsetMs)
         fun fresh() = cache[key]?.takeIf { System.currentTimeMillis() - it.at < cacheMs }?.value
         fresh()?.let { return it }
-        // One computation at a time: concurrent requests wait for it instead of all hitting the database
-        return computeLock.withLock {
-            fresh() ?: computeUncached(app, period, offset, tzOffsetMs).also {
+        // Concurrent requests for the same key wait for one computation instead of all hitting the database
+        val mine = CompletableDeferred<PeriodStats>()
+        val running = inFlight.putIfAbsent(key, mine)
+        if (running != null) return running.await()
+        try {
+            val value = fresh() ?: permits.withPermit { computeUncached(app, period, offset, tzOffsetMs) }.also {
                 if (cache.size > 5_000) cache.clear()
                 cache[key] = Cached(System.currentTimeMillis(), it)
             }
+            mine.complete(value)
+            return value
+        } catch (e: Throwable) {
+            mine.completeExceptionally(e)
+            throw e
+        } finally {
+            inFlight.remove(key, mine)
         }
     }
 

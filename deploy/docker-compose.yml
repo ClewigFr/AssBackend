@@ -61,7 +61,8 @@ services:
   # Publishes the dashboard and the API over HTTPS without opening any port on the router.
   # Public hostnames are set in the Cloudflare Zero Trust dashboard (see README.md).
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    # Pinned: bump the version on purpose (see UPGRADING.md), never pull an unknown latest
+    image: cloudflare/cloudflared:2026.11.2
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:

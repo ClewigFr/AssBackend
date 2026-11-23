@@ -115,6 +115,7 @@ Expect `Rolled up N page views older than 90 days into daily counts` in the logs
   docker compose build --pull backup && docker compose up -d backup
   ```
   The `postgres:18-alpine` tag only receives 18.x fixes.
+  `cloudflared` is pinned to a version in `docker-compose.yml`, so `pull` doesn't change it: to update it, pick a release from [github.com/cloudflare/cloudflared/releases](https://github.com/cloudflare/cloudflared/releases), change the tag, then pull.
 - **Changing the PostgreSQL major version** (18 → 19) is a different operation, because the data files aren't compatible:
   1. back up;
   2. `docker compose down`;

@@ -62,3 +62,19 @@ fun originCheck(allowedOrigins: List<String>) = createApplicationPlugin("OriginC
         if (origin.trimEnd('/') !in allowed) call.respond(HttpStatusCode.Forbidden, "origin not allowed")
     }
 }
+
+/**
+ * Defensive headers on every response. The API serves JSON and text only, so nothing may be
+ * sniffed as HTML, framed or leak a Referer; HSTS outside dev (served over HTTPS by Cloudflare).
+ */
+fun securityHeaders(hsts: Boolean) = createApplicationPlugin("SecurityHeaders") {
+    onCall { call ->
+        with(call.response.headers) {
+            append("X-Content-Type-Options", "nosniff")
+            append("X-Frame-Options", "DENY")
+            append("Referrer-Policy", "no-referrer")
+            append("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+            if (hsts) append("Strict-Transport-Security", "max-age=31536000")
+        }
+    }
+}

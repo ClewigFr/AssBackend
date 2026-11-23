@@ -89,4 +89,20 @@ class SecurityTest {
         val views = (0..MAX_VIEWS_PER_REQUEST).joinToString(",") { viewJson(page) }
         assertEquals(HttpStatusCode.BadRequest, call(HttpMethod.Post, "/views", json = """{"pageViews":[$views]}""").status)
     }
+
+    @Test
+    fun responsesCarrySecurityHeaders() = withServer {
+        val headers = call(HttpMethod.Get, "/").headers
+        assertEquals("nosniff", headers["X-Content-Type-Options"])
+        assertEquals("DENY", headers["X-Frame-Options"])
+        assertEquals("no-referrer", headers["Referrer-Policy"])
+    }
+
+    @Test
+    fun hstsOutsideDev() = withServer(
+        "ktor.environment" to "prod",
+        "ktor.security.session_sign_key" to "00".repeat(32)
+    ) {
+        assertTrue(call(HttpMethod.Get, "/").headers["Strict-Transport-Security"]!!.startsWith("max-age="))
+    }
 }

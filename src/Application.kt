@@ -31,6 +31,8 @@ import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.plugins.PayloadTooLargeException
 import com.ass.auth.BodyLimit
 import com.ass.auth.originCheck
+import com.ass.auth.securityHeaders
+import com.ass.dao.warnAboutLegacyHashes
 import io.ktor.server.plugins.ContentTransformationException
 import io.ktor.server.plugins.compression.Compression
 import io.ktor.server.plugins.compression.CompressionConfig
@@ -74,6 +76,7 @@ fun Application.module() {
         poolSize = configInt("ktor.performance.db_pool_size", 10)
     )
     databaseInitialization(db)
+    warnAboutLegacyHashes(db)
 
     val pageCache = PageCache(db)
     runBlocking { pageCache.load() }
@@ -186,6 +189,7 @@ fun Application.installModule() {
         gzip { minimumSize(1024) }
     }
 
+    install(securityHeaders(hsts = !dev))
     install(BodyLimit)
     install(originCheck(origins))
 
