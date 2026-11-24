@@ -50,6 +50,8 @@ services:
       MAX_SIGNUPS_PER_HOUR: ${MAX_SIGNUPS_PER_HOUR:-30}
       TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
       TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
+      # Accept views without "app" (Android library before AssConfig)
+      LEGACY_VIEWS: ${LEGACY_VIEWS:-false}
       RETENTION_DAYS: ${RETENTION_DAYS:-90}
       MAX_APPS: ${MAX_APPS:-5}
       MAX_PAGES_PER_APP: ${MAX_PAGES_PER_APP:-30}

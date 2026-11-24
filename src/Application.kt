@@ -157,7 +157,8 @@ fun Application.module() {
     routing {
         root()
         health(db)
-        pageViews(pageCache, ingestor, ViewBudget(configInt("ktor.performance.views_per_minute", 20_000)), guard, rateLimited = viewsRateLimit > 0)
+        pageViews(pageCache, ingestor, ViewBudget(configInt("ktor.performance.views_per_minute", 20_000)), guard, rateLimited = viewsRateLimit > 0,
+            legacyViews = configBool("ktor.security.legacy_views", false))
         val quotas = Quotas(
             maxApps = configInt("ktor.quotas.max_apps", 5),
             maxPagesPerApp = configInt("ktor.quotas.max_pages_per_app", 30),

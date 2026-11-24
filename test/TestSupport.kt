@@ -35,6 +35,8 @@ fun withServer(vararg extraConfig: Pair<String, String>, test: suspend Applicati
                 // Turned on by the tests of these features
                 "ktor.security.email_verification" to "false",
                 "ktor.security.signup_min_seconds" to "0",
+                // Many tests post bodies without "app"; LegacyViewsTest turns it off
+                "ktor.security.legacy_views" to "true",
                 *extraConfig
             )
         }

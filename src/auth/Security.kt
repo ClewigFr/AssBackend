@@ -54,12 +54,16 @@ object LoginThrottle {
         (entries[key(email, client)]?.lockedUntil ?: 0) > now
 
     fun recordFailure(email: String, client: String, now: Long = System.currentTimeMillis()) {
-        if (entries.size >= MAX_ENTRIES) {
-            // Forget failures older than a lock period and expired locks, then everything if still full
+        val k = key(email, client)
+        if (entries.size >= MAX_ENTRIES && !entries.containsKey(k)) {
+            // Forget failures older than a lock period and expired locks, then the unlocked ones.
+            // Active locks are never dropped: flooding the table must not unlock an account.
             entries.entries.removeIf { it.value.lockedUntil <= now && now - it.value.lastFailure > LOCK_MS }
-            if (entries.size >= MAX_ENTRIES) entries.clear()
+            if (entries.size >= MAX_ENTRIES) entries.entries.removeIf { it.value.lockedUntil <= now }
+            // Still full of active locks: this attempt isn't tracked (the per-IP rate limit still applies)
+            if (entries.size >= MAX_ENTRIES) return
         }
-        entries.compute(key(email, client)) { _, e ->
+        entries.compute(k) { _, e ->
             val entry = if (e == null || (e.lockedUntil in 1..now)) Entry(0, 0, now) else e
             entry.failures++
             entry.lastFailure = now

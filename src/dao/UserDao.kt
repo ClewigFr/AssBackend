@@ -59,7 +59,9 @@ suspend fun createUser(db: Db, email: String, displayName: String, password: Str
 /**
  * Pattern to validate an `userId`
  */
-private val userIdPattern = "^[A-Za-z](.*)([@]{1})(.{1,})(\\.)(.{1,})".toRegex()
+private const val EMAIL_CHAR = """[^\s\p{Cntrl}@<>,;:"()\[\]\\]"""
+/** local@domain.tld: one @, a dot in the domain, no whitespace, control or address-list characters. */
+private val userIdPattern = "$EMAIL_CHAR+@$EMAIL_CHAR+\\.$EMAIL_CHAR+".toRegex()
 
 /**
  * Validates that an [userId] (that is also the user name) is a valid identifier.

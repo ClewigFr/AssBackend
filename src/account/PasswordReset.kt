@@ -92,11 +92,20 @@ fun Route.passwordReset(db: Db, mailer: Mailer, dashboardUrl: String, rateLimite
                         return@post call.respond(HttpStatusCode.BadRequest, "Password should be at most $BCRYPT_MAX_BYTES bytes long")
                     token.length !in 20..100 -> return@post call.respond(HttpStatusCode.BadRequest, "invalid or expired link")
                 }
+                val tokenHash = sha256(token)
+                // Check the token before paying for bcrypt: a bad token costs no hash
+                val known = db.query {
+                    PasswordResets.select(PasswordResets.user)
+                        .where { (PasswordResets.tokenHash eq tokenHash) and (PasswordResets.expiresAt greater System.currentTimeMillis()) }
+                        .any()
+                }
+                if (!known) return@post call.respond(HttpStatusCode.BadRequest, "invalid or expired link")
                 val hash = withContext(Dispatchers.Default) { hashPassword(new) }
                 val now = System.currentTimeMillis()
+                // Checked again in the transaction that uses it, so a token still works only once
                 val done = db.query {
                     val user = PasswordResets.select(PasswordResets.user)
-                        .where { (PasswordResets.tokenHash eq sha256(token)) and (PasswordResets.expiresAt greater now) }
+                        .where { (PasswordResets.tokenHash eq tokenHash) and (PasswordResets.expiresAt greater now) }
                         .firstOrNull()?.get(PasswordResets.user) ?: return@query false
                     Users.update({ Users.id eq user }) {
                         it[passwordHash] = hash

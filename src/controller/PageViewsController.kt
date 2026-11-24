@@ -44,15 +44,19 @@ const val BUFFER_FULL_RETRY_AFTER_S = 10
  * The body may be gzipped (Content-Encoding: gzip); every response says so with Accept-Encoding.
  * The Android client retries on anything but 200/206/400.
  */
-fun Route.pageViews(pageCache: PageCache, ingestor: ViewIngestor, budget: ViewBudget, guard: ViewGuard, rateLimited: Boolean) {
+fun Route.pageViews(pageCache: PageCache, ingestor: ViewIngestor, budget: ViewBudget, guard: ViewGuard, rateLimited: Boolean, legacyViews: Boolean = false) {
     if (rateLimited) {
-        rateLimit(VIEWS_RATE_LIMIT) { viewsRoute(pageCache, ingestor, budget, guard) }
+        rateLimit(VIEWS_RATE_LIMIT) { viewsRoute(pageCache, ingestor, budget, guard, legacyViews) }
     } else {
-        viewsRoute(pageCache, ingestor, budget, guard)
+        viewsRoute(pageCache, ingestor, budget, guard, legacyViews)
     }
 }
 
-private fun Route.viewsRoute(pageCache: PageCache, ingestor: ViewIngestor, budget: ViewBudget, guard: ViewGuard) {
+/**
+ * [legacyViews]: also accept bodies without "app" (library before AssConfig) for any page.
+ * Off by default: page UUIDs can be read from any APK, "app" at least ties a batch to one application.
+ */
+private fun Route.viewsRoute(pageCache: PageCache, ingestor: ViewIngestor, budget: ViewBudget, guard: ViewGuard, legacyViews: Boolean) {
     post("/views") {
         // Tell clients they may gzip their next batches (RFC 7694)
         call.response.header(HttpHeaders.AcceptEncoding, "gzip")
@@ -62,7 +66,7 @@ private fun Route.viewsRoute(pageCache: PageCache, ingestor: ViewIngestor, budge
             ViewsBody.Invalid -> return@post call.respond(HttpStatusCode.BadRequest)
         }
         val hits = body?.pageViews.orEmpty()
-        if (hits.isEmpty() || hits.size > MAX_VIEWS_PER_REQUEST) {
+        if (hits.isEmpty() || hits.size > MAX_VIEWS_PER_REQUEST || (body?.app == null && !legacyViews)) {
             return@post call.respond(HttpStatusCode.BadRequest)
         }
         val now = System.currentTimeMillis()
