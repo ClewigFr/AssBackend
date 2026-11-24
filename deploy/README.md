@@ -142,15 +142,17 @@ The `monitor` service measures the Pi every minute and emails you:
   - for the machine: average and peak (with the time) of CPU, load, RAM, swap and temperature, plus the Pi's throttling flags (undervoltage, reduced frequency) since boot;
   - for the storage: space used, **bytes written** to the SD card over the day with a projection over a year, and the storage errors the kernel reported. That's how SD card wear shows: a card gives no wear percentage like an SSD;
   - for each container: average and peak CPU and RAM, and restarts;
+  - for the accounts: sign-ups of the day (verified or not, with their emails), the total of verified accounts, the 5 most active accounts of the month and those over the monthly views quota;
   - for the service: views received and the busiest hour, views dropped by the flood limits per application, database size and the last successful backup;
 - **an alert right away**, at most once every 6 hours per kind, when:
   - the disk is over 85 % full (`ALERT_DISK_PERCENT`);
   - the CPU is at 80 °C or more (`ALERT_TEMP`);
   - the Pi is being throttled;
   - the kernel reports a storage error;
-  - a container of the stack has stopped;
+  - a container of the stack has stopped. You also get this one when you stop a container yourself, for example during a restore;
   - the backend dropped 100 views or more over its flood limits in the last hour or two (`ALERT_DROPPED_VIEWS`);
-  - an application receives at least 10 times its usual hourly views, and 500 or more (`ALERT_SPIKE_MIN`): a success, or fake views. These two are checked every 10 minutes. You also get this alert when you stop one yourself, for example during a restore.
+  - 20 sign-ups or more in an hour (`ALERT_SIGNUPS`): a success, or bots getting past the sign-up protection;
+  - an application receives at least 10 times its usual hourly views, and 500 or more (`ALERT_SPIKE_MIN`): a success, or fake views. These last three are checked every 10 minutes.
 
 It writes a few hundred KB a day (in `DATA_DIR/monitor`, two days kept) and uses about 10 MB of RAM. It reads the host's counters read-only (`/sys/fs/cgroup`, `/var/lib/docker/containers`) and has no access to the Docker socket, so it can't control anything.
 

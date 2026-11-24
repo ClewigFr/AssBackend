@@ -86,6 +86,25 @@ if [ -r /backups/last-backup ]; then
   [ $((now - bts)) -gt $((36 * 3600)) ] && warn "pas de sauvegarde réussie depuis plus de 36 h"
 fi
 
+# Accounts: sign-ups of the day, the most active accounts, the ones over the monthly views quota
+month_ms=$(( $(date -u -d "$(date -u +%Y-%m-01)" +%s) * 1000 ))
+q() { psql -tAF ' : ' -c "$1" 2>/dev/null; }
+accounts_total=$(q "select count(*) from users where email_verified")
+signups=$(q "select count(*) filter (where email_verified) || ' vérifié(s), ' || count(*) filter (where not email_verified) || ' en attente de vérification'
+  from users where created_at >= $((from * 1000))")
+signup_list=$(q "select email || case when email_verified then '' else ' (pas encore vérifié)' end from users
+  where created_at >= $((from * 1000)) order by created_at limit 30")
+month_views="select a.owner, count(*) as n from pagesviews v join apps a on a.id = v.app where v.\"timestamp\" >= $month_ms group by a.owner
+  union all select a.owner, sum(d.views) from pagesdaily d join apps a on a.id = d.app where d.day >= $month_ms group by a.owner"
+top_accounts=$(q "select u.email, (select count(*) from apps where owner = u.id) || ' app(s)', sum(m.n) || ' vues ce mois-ci'
+  from ($month_views) m join users u on u.id = m.owner group by u.id, u.email order by sum(m.n) desc limit 5")
+over_quota=""
+if [ "${MAX_MONTHLY_VIEWS:-100000}" -gt 0 ]; then
+  over_quota=$(q "select u.email, sum(m.n) || ' vues' from ($month_views) m join users u on u.id = m.owner
+    group by u.id, u.email having sum(m.n) >= ${MAX_MONTHLY_VIEWS:-100000} order by 2 desc")
+  [ -n "$over_quota" ] && warn "des comptes dépassent le quota de vues du mois"
+fi
+
 status="tout va bien"; [ -n "$attention" ] && status="$(echo "$attention" | grep -c .) point(s) d'attention"
 {
   echo "Rapport de $host, du $(hhmm "$from") au $(hhmm "$now") ($samples mesures)."
@@ -108,6 +127,12 @@ status="tout va bien"; [ -n "$attention" ] && status="$(echo "$attention" | grep
   echo
   echo "CONTENEURS (moyenne et pic sur 24 h)"
   echo "${containers:-  aucune mesure}"
+  echo
+  echo "COMPTES (${accounts_total:-?} vérifiés au total)"
+  echo "  Inscriptions sur 24 h : ${signups:-?}"
+  [ -n "$signup_list" ] && echo "$signup_list" | sed 's/^/    /'
+  if [ -n "$top_accounts" ]; then echo "  Comptes les plus actifs ce mois-ci :"; echo "$top_accounts" | sed 's/^/    /'; fi
+  if [ -n "$over_quota" ]; then echo "  Au-delà du quota de ${MAX_MONTHLY_VIEWS:-100000} vues par mois (les vues restent comptées) :"; echo "$over_quota" | sed 's/^/    /'; fi
   echo
   echo "SERVICE"
   echo "  Vues reçues sur 24 h : $views${peak:+, heure la plus chargée : $peak}"

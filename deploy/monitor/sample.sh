@@ -103,6 +103,13 @@ if [ $(( now / 60 % 10 )) -eq 0 ]; then
 $dropped
 
 Elles ne comptent pas dans les stats. Si ça continue, regardez la période dans le dashboard et supprimez-la au besoin (onglet Configuration > Supprimer des vues)."
+  signups=$(psql -tAc "select count(*) from users where created_at >= $hour_ago" 2>/dev/null)
+  [ "${signups:-0}" -ge "${ALERT_SIGNUPS:-20}" ] && alert signups "$signups inscriptions en une heure" "$signups comptes ont été créés depuis une heure. C'est peut-être un succès, ou des bots qui passent la protection de l'inscription.
+
+Les comptes jamais vérifiés sont supprimés au bout d'un jour. Pour les voir sur le Pi :
+docker compose exec postgres psql -U ass ass -c \"select email, email_verified, to_timestamp(created_at/1000) from users order by created_at desc limit 50\"
+
+Pour fermer l'inscription le temps de regarder : REGISTRATION_OPEN=false dans .env, puis docker compose up -d backend."
   spikes=$(psql -tAF ' : ' -c "select a.name, count(*) filter (where v.\"timestamp\" >= $hour_ago) as last_hour,
       round(count(*) filter (where v.\"timestamp\" < $hour_ago) / 168.0) as usual
     from pagesviews v join apps a on a.id = v.app
