@@ -17,6 +17,7 @@ import com.ass.ingest.ViewIngestor
 import com.ass.model.AssJson
 import com.ass.account.Quotas
 import com.ass.account.account
+import com.ass.account.limits
 import com.ass.account.mailerFromConfig
 import com.ass.account.passwordReset
 import com.ass.dao.PasswordResets
@@ -166,6 +167,7 @@ fun Application.module() {
         )
         apps(db, pageCache, statsService, quotas)
         account(db, quotas, pageCache, statsService, rateLimited = authRateLimit > 0)
+        limits(quotas, retention.days)
         passwordReset(db, mailer, dashboardUrl, rateLimited = authRateLimit > 0)
         login(db, rateLimited = authRateLimit > 0, verification)
         register(db, rateLimited = authRateLimit > 0, signup)

@@ -1,6 +1,8 @@
 package com.ass.account
 
 import com.ass.dao.Apps
+import io.ktor.server.response.respond
+import io.ktor.server.routing.get
 import com.ass.dao.PagesDaily
 import com.ass.dao.PagesViews
 import org.jetbrains.exposed.v1.core.and
@@ -44,4 +46,13 @@ fun JdbcTransaction.viewsSince(owner: EntityID<Int>, from: Long): Long {
         (PagesDaily.app inSubQuery ownedApps) and (PagesDaily.day greaterEq from)
     }.single()[total] ?: 0
     return raw + daily
+}
+
+/**
+ * GET /limits, public: the quotas of every account and the retention, for the presentation page.
+ * 0 means no limit (or, for retentionDays, everything kept).
+ */
+fun io.ktor.server.routing.Route.limits(quotas: Quotas, retentionDays: Int) {
+    val body = com.ass.model.LimitsOut(quotas.maxApps, quotas.maxPagesPerApp, quotas.maxMonthlyViews, retentionDays)
+    get("/limits") { call.respond(body) }
 }

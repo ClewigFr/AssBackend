@@ -192,6 +192,7 @@ See [Configuration](#configuration) for the variables that are required in produ
 | `DELETE` | `/apps/{app}/pages/{page}` | owner | Delete a page and its views → `204` |
 | `GET`    | `/apps/{app}/stats` | owner | Stats for a period, see below |
 | `DELETE` | `/apps/{app}/views?from=<ms>&to=<ms>` | owner | Delete the views received in `[from, to)`, and the daily counts of the days entirely inside it → `200 {"deleted"}`. To clean up after a flood |
+| `GET`    | `/limits`     | none  | The quotas of every account and the retention: `{"maxApps","maxPagesPerApp","maxMonthlyViews","retentionDays"}` (`0`: no limit, or everything kept). Shown on the dashboard's presentation page |
 | `GET`    | `/account`    | login | `{"email","displayName","quotas":{"maxApps","maxPagesPerApp","maxMonthlyViews"},"usage":{"apps","monthViews","monthStart"}}`. `monthViews` counts every application of the account since `monthStart` (the 1st of the month, UTC); a quota of `0` means no limit |
 | `POST`   | `/account/password` | login | `{"current","new"}` → `204`, with a new session cookie: every other session (other devices) is signed out. `403` if `current` is wrong, `400` if `new` isn't 8 characters to 72 bytes |
 | `POST`   | `/password/forgot` | none | `{"email"}` → `204` whether or not the account exists. If it does, emails a reset link valid 1 hour, usable once (at most 3 pending per account) |

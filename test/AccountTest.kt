@@ -34,6 +34,12 @@ class AccountTest {
     }
 
     @Test
+    fun publishesTheLimitsWithoutLogin() = withServer("ktor.quotas.max_apps" to "7", "ktor.performance.retention_days" to "30") {
+        val limits = Json.decodeFromString<com.ass.model.LimitsOut>(call(HttpMethod.Get, "/limits").bodyAsText())
+        assertEquals(com.ass.model.LimitsOut(7, 30, 100_000, 30), limits)
+    }
+
+    @Test
     fun monthStartIsTheFirstDayInUtc() {
         assertEquals(1_793_491_200_000, monthStart(1_794_000_000_000)) // 2026-11-01, from 2026-11-06
     }
