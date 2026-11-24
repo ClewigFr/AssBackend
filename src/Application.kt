@@ -194,7 +194,7 @@ fun Application.installModule() {
     install(originCheck(origins))
 
     if (!dev) {
-        // Behind a proxy (Cloudflare Tunnel, Heroku's router), the real client IP is the last
+        // Behind a proxy (Cloudflare Tunnel), the real client IP is the last
         // X-Forwarded-For entry: proxies append it after whatever the client sent. It's only
         // used as the in-memory rate-limit key, never stored or logged.
         install(XForwardedHeaders) { useLastProxy() }

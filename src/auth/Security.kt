@@ -37,7 +37,7 @@ fun isSessionValid(session: ASSSession, now: Long = System.currentTimeMillis()):
  * account from one client IP, further attempts from that IP are refused for [LOCK_MS].
  * Keyed by (account, IP) so a stranger can't lock the real user out; guessing from many
  * accounts or IPs is bounded by the per-IP rate limit on /login. Resets on a successful login.
- * Per instance only; good enough for a single dyno.
+ * Per instance only; good enough for a single server.
  */
 object LoginThrottle {
     const val MAX_FAILURES = 5

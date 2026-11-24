@@ -31,10 +31,7 @@ Session cookies are signed with HMAC so that a client can't forge a session for 
    ```bash
    openssl rand -hex 32
    ```
-2. Set it on the server. For example, on Heroku:
-   ```bash
-   heroku config:set SESSION_SIGN_KEY=<the generated key>
-   ```
+2. Set it on the server (on the Pi, in `deploy/.env`, see [deploy/README.md](deploy/README.md)).
    Or set it locally for a production-like run:
    ```bash
    export SESSION_SIGN_KEY=<the generated key>
@@ -44,7 +41,7 @@ Things to know:
 - **Keep the key secret** and never commit it. Store it the same way as your database password.
 - **Changing the key logs every user out**, because existing cookies no longer verify. Changing it is also how you invalidate all sessions at once if the key leaks.
 - In `dev`, if no key is set, a random one is generated on every start, so restarting the server logs everyone out.
-- Use the same key on every instance when you run more than one dyno or container.
+- Use the same key on every instance when you run more than one container.
 
 ### Account security
 
@@ -60,13 +57,13 @@ Things to know:
 The server is built to absorb large volumes of page views with little memory:
 
 - **Asynchronous writes:** `POST /views` checks the views, puts them in an in-memory buffer and answers immediately. A background task writes the buffer in batches (one `INSERT` for up to 5000 views) every `FLUSH_INTERVAL_MS`.
-  - **Trade-off:** if the process is killed abruptly (crash, `kill -9`), views not written yet are lost, at most `FLUSH_INTERVAL_MS` worth (200 ms by default). On a normal shutdown (`SIGTERM`, which is what Heroku sends), the buffer is written before the server stops.
+  - **Trade-off:** if the process is killed abruptly (crash, `kill -9`), views not written yet are lost, at most `FLUSH_INTERVAL_MS` worth (200 ms by default). On a normal shutdown (`SIGTERM`, which is what `docker compose stop` sends), the buffer is written before the server stops.
   - If the buffer is full (`INGEST_CAPACITY`), `/views` answers `503`, and the Android client retries later.
 - **Page ids are kept in memory**, so validating a view never queries the database.
 - **Connection pool** (HikariCP), with queries run on a dedicated thread pool of the same size, so a slow database never blocks request handling.
 - **Stats are computed in SQL** (counts per page and per day) and **cached** for `STATS_CACHE_MS`. The response size depends on the number of pages and days, not on the number of views.
 - **gzip** for responses over 1 KB, **per-IP rate limits** on `/views` (requests and views per minute, at most 1000 views per request), `/login` and `/register`, request bodies capped at 1 MB (`413`), state-changing browser requests only from `CORS_ORIGINS` (CSRF), and logs written asynchronously at `INFO` level.
-- **JVM** (`Procfile`): `-XX:+UseSerialGC -XX:MaxRAMPercentage=75 -Xss512k`, tuned for small containers.
+- **JVM** (`Dockerfile`): `-XX:+UseSerialGC -XX:MaxRAMPercentage=75 -Xss512k`, tuned for small containers.
 
 Measured locally with ApacheBench (H2 in memory, so absolute numbers will differ on PostgreSQL):
 
@@ -128,7 +125,7 @@ Each test starts the real module against a fresh in-memory H2 database. `Postgre
 
 Validated on PostgreSQL 18 with a database in the pre-upgrade state (created by commit `7886c78`): tables and data are kept, and the new columns, indexes and applications are added on the first start.
 
-1. **Back up the database.** For example: `heroku pg:backups:capture`, or `pg_dump`.
+1. **Back up the database.** For example with `pg_dump`, or on the Pi `docker compose run --rm backup backup.sh`.
 2. **Set the configuration:** `SESSION_SIGN_KEY` (required, `openssl rand -hex 32`), `CORS_ORIGINS` (the dashboard's URL), and `JDBC_DATABASE_URL`. `REGISTRATION_OPEN=true` only if sign-ups should be open.
 3. **Deploy the backend and the dashboard together.** Their API changed in step.
 4. **Check the first start's logs.** On a database from before applications, expect:
@@ -150,7 +147,7 @@ What doesn't migrate:
 ./gradlew shadowJar && java -jar build/libs/anonymoussimplestats-0.0.1-all.jar
 ```
 
-On Heroku, the `Procfile` runs the shadow jar and `app.json` provisions PostgreSQL. See [Configuration](#configuration) for the variables that are required in production.
+See [Configuration](#configuration) for the variables that are required in production.
 
 ## API
 
@@ -206,6 +203,5 @@ Passwords are hashed with bcrypt. Accounts created before bcrypt still have the 
 
 ## Hosting options considered
 
-- Heroku: https://www.heroku.com/
 - Scaleway: https://www.scaleway.com/fr/instances-virtuelles/development/
 - Ikoula: https://www.ikoula.com/fr/cloud-public

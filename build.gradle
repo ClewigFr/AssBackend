@@ -67,8 +67,3 @@ shadowJar {
     // Ktor/Netty rely on ServiceLoader files, which must be merged in the fat jar
     mergeServiceFiles()
 }
-
-// Heroku runs `gradle stage` on deploy
-tasks.register('stage') {
-    dependsOn 'clean', 'shadowJar'
-}
