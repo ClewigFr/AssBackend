@@ -1,5 +1,6 @@
 package com.ass.controller
 
+import com.ass.account.Quotas
 import com.ass.auth.currentUser
 import com.ass.dao.Apps
 import com.ass.dao.Pages
@@ -54,9 +55,10 @@ const val MAX_PAGES_PER_BATCH = 1000
  * DELETE /apps/{app}/pages/{page}       -> 204 (its views too)
  * GET    /apps/{app}/stats?period=day|week|month|year&offset=0&tz=<minutes> -> stats of a period
  *
- * Another user's application answers 404, exactly like a missing one.
+ * Another user's application answers 404, exactly like a missing one. Going over [Quotas]
+ * (applications per account, pages per application) answers 403 and creates nothing.
  */
-fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService) {
+fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService, quotas: Quotas = Quotas()) {
     route("/apps") {
         get {
             val user = requireUser(db) ?: return@get
@@ -76,11 +78,12 @@ fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService) {
             val user = requireUser(db) ?: return@post
             val name = readName() ?: return@post
             val id = db.query {
-                Apps.insertAndGetId {
+                if (quotas.appsFull(Apps.select(Apps.id).where { Apps.owner eq user.id }.count())) null
+                else Apps.insertAndGetId {
                     it[Apps.name] = name
                     it[owner] = user.id
                 }.value
-            }
+            } ?: return@post call.respond(HttpStatusCode.Forbidden, "quota: at most ${quotas.maxApps} applications per account")
             call.respond(HttpStatusCode.Created, AppOut(id, name))
         }
 
@@ -127,11 +130,12 @@ fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService) {
                 val app = ownedApp(db, user) ?: return@post
                 val name = readName() ?: return@post
                 val id = db.query {
-                    Pages.insertAndGetId {
+                    if (quotas.pagesLeft(pageCount(app.id)) == 0L) null
+                    else Pages.insertAndGetId {
                         it[Pages.name] = name
                         it[Pages.app] = app.id
                     }.value
-                }
+                } ?: return@post call.respond(HttpStatusCode.Forbidden, "quota: at most ${quotas.maxPagesPerApp} pages per application")
                 pageCache.added(id, app.id)
                 statsService.invalidate(app.id)
                 call.respond(HttpStatusCode.Created, PageOut(id, name))
@@ -151,13 +155,15 @@ fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService) {
                         .map { PageOut(it[Pages.id].value, it[Pages.name]) }
                     val known = existing.map { it.name }.toSet()
                     val created = names.filter { it !in known }.map { PageOut(UUID.randomUUID(), it) }
+                    // All or nothing: a partial import would be harder to understand than a refusal
+                    if (created.size > quotas.pagesLeft(pageCount(app.id))) return@query null
                     Pages.batchInsert(created, shouldReturnGeneratedValues = false) { page ->
                         this[Pages.id] = page.id
                         this[Pages.name] = page.name
                         this[Pages.app] = app.id
                     }
                     BatchPagesOut(created, existing.sortedBy { names.indexOf(it.name) })
-                }
+                } ?: return@post call.respond(HttpStatusCode.Forbidden, "quota: at most ${quotas.maxPagesPerApp} pages per application")
                 result.created.forEach { pageCache.added(it.id, app.id) }
                 if (result.created.isNotEmpty()) statsService.invalidate(app.id)
                 call.respond(result)
@@ -185,6 +191,8 @@ fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService) {
         }
     }
 }
+
+private fun pageCount(app: UUID) = Pages.select(Pages.id).where { Pages.app eq app }.count()
 
 private fun String.toUuidOrNull(): UUID? = try { UUID.fromString(this) } catch (e: IllegalArgumentException) { null }
 

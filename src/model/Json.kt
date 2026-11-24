@@ -96,3 +96,20 @@ data class PeriodStats(
     /** Before this instant only views per page and per day are kept (no sessions, hours or durations); null if everything is kept. */
     val detailFrom: Long? = null
 )
+
+@Serializable
+data class PasswordChangeIn(val current: String? = null, val new: String? = null)
+
+@Serializable
+data class PasswordIn(val password: String? = null)
+
+/** 0 means no limit. */
+@Serializable
+data class QuotasOut(val maxApps: Int, val maxPagesPerApp: Int, val maxMonthlyViews: Long)
+
+/** [monthViews]: views of all the user's applications since [monthStart] (first day of the month, UTC). */
+@Serializable
+data class UsageOut(val apps: Long, val monthViews: Long, val monthStart: Long)
+
+@Serializable
+data class AccountOut(val email: String, val displayName: String, val quotas: QuotasOut, val usage: UsageOut)

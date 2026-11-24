@@ -13,6 +13,8 @@ import com.ass.ingest.PageCache
 import com.ass.ingest.ViewBudget
 import com.ass.ingest.ViewIngestor
 import com.ass.model.AssJson
+import com.ass.account.Quotas
+import com.ass.account.account
 import com.ass.routing.health
 import com.ass.routing.root
 import com.ass.retention.Retention
@@ -109,7 +111,13 @@ fun Application.module() {
         root()
         health(db)
         pageViews(pageCache, ingestor, ViewBudget(configInt("ktor.performance.views_per_minute", 20_000)), rateLimited = viewsRateLimit > 0)
-        apps(db, pageCache, statsService)
+        val quotas = Quotas(
+            maxApps = configInt("ktor.quotas.max_apps", 5),
+            maxPagesPerApp = configInt("ktor.quotas.max_pages_per_app", 30),
+            maxMonthlyViews = configInt("ktor.quotas.max_monthly_views", 100_000).toLong()
+        )
+        apps(db, pageCache, statsService, quotas)
+        account(db, quotas, pageCache, statsService, rateLimited = authRateLimit > 0)
         login(db, rateLimited = authRateLimit > 0)
         register(db, rateLimited = authRateLimit > 0)
     }

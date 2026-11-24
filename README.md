@@ -17,9 +17,12 @@ Everything is set through environment variables, which are read in `resources/ap
 | `INGEST_CAPACITY`   | no              | `500000`           | Max page views waiting to be written; beyond that `/views` answers `503` |
 | `VIEWS_RATE_LIMIT`  | no              | `600`              | Max `POST /views` per client IP per minute (`0` disables it) |
 | `VIEWS_PER_MINUTE`  | no              | `20000`            | Max page views accepted per client IP per minute, answered `429` beyond (`0` disables it; keep it above 1000, the largest batch) |
-| `AUTH_RATE_LIMIT`   | no              | `10`               | Max `POST /login` and `POST /register` per client IP per minute (`0` disables it) |
+| `AUTH_RATE_LIMIT`   | no              | `10`               | Max `POST /login`, `POST /register`, `POST /account/password` and `DELETE /account` per client IP per minute (`0` disables it) |
 | `STATS_CACHE_MS`    | no              | `5000`             | How long stats results are cached (`0` disables the cache) |
 | `RETENTION_DAYS`    | no              | `90`               | How long raw page views (with their session ids) are kept. Older ones become views per page and per day, see [Data retention](#data-retention). `0` keeps everything |
+| `MAX_APPS`          | no              | `5`                | Applications per account; creating more answers `403`. `0`: no limit, like the two below |
+| `MAX_PAGES_PER_APP` | no              | `30`               | Pages per application; adding more (one page or a CSV import) answers `403` |
+| `MAX_MONTHLY_VIEWS` | no              | `100000`           | Views per account and calendar month (UTC). A **soft** limit: views keep being recorded, the dashboard shows an alert. See [Quotas](#quotas) |
 | `KTOR_ENV`          | no              | `dev`              | `dev` uses H2; any other value uses PostgreSQL |
 | `PORT`              | no              | `8080`             | HTTP port                                |
 
@@ -83,6 +86,12 @@ Raw page views, each with its random session id, are kept for `RETENTION_DAYS` (
 - Less personal data kept (no session trail after 90 days), and a database that stays small: one row per page and per day, whatever the traffic.
 - Deleting a page or an application deletes its daily counts too.
 - **The rollup can't be undone.** Raising `RETENTION_DAYS` later only keeps more detail from then on.
+
+### Quotas
+
+Every account has the same limits (`MAX_APPS`, `MAX_PAGES_PER_APP`, `MAX_MONTHLY_VIEWS`):
+- **5 applications, 30 pages per application:** hard limits. Creating one more answers `403` with a body starting with `quota:`. A CSV import that would go over is refused as a whole (names already in the application don't count). Existing applications and pages above a lowered limit are kept.
+- **100,000 views per month:** a soft limit. `POST /views` never refuses views because of it (the Android library would retry them forever); `GET /account` reports the month's views and the dashboard shows an alert once they reach the limit. The month is the calendar month in UTC, all the account's applications together.
 
 ### Cookies across sites
 
@@ -162,8 +171,11 @@ See [Configuration](#configuration) for the variables that are required in produ
 | `POST`   | `/apps/{app}/pages/batch` | owner | Add several pages `{"names":[...]}` (up to 1000) → `200 {"created":[{"id","name"}],"existing":[...]}`. Names already in the application aren't created again, so the same list can be imported twice |
 | `DELETE` | `/apps/{app}/pages/{page}` | owner | Delete a page and its views → `204` |
 | `GET`    | `/apps/{app}/stats` | owner | Stats for a period, see below |
+| `GET`    | `/account`    | login | `{"email","displayName","quotas":{"maxApps","maxPagesPerApp","maxMonthlyViews"},"usage":{"apps","monthViews","monthStart"}}`. `monthViews` counts every application of the account since `monthStart` (the 1st of the month, UTC); a quota of `0` means no limit |
+| `POST`   | `/account/password` | login | `{"current","new"}` → `204`, with a new session cookie: every other session (other devices) is signed out. `403` if `current` is wrong, `400` if `new` isn't 8 characters to 72 bytes |
+| `DELETE` | `/account`    | login | `{"password"}` → `204`: deletes the account, its applications, pages and views, and ends the session. `403` if the password is wrong |
 
-Another user's application answers `404`, exactly like one that doesn't exist.
+Another user's application answers `404`, exactly like one that doesn't exist. Going over a [quota](#quotas) answers `403`.
 
 ### Stats
 
