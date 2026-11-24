@@ -171,6 +171,8 @@ Setup, with an OVH mailbox (Web Cloud > Emails, or the one that comes with your 
    ```
 4. Optional: so you know when the monitoring itself is down, create another check on healthchecks.io with a 1 day period and a few hours of grace, and put its ping URL in `MONITOR_HEALTHCHECK_URL`. It's pinged after each report sent.
 
+The backend uses the same mailbox for the **password reset** emails ("Mot de passe oublié ?" on the login page). Their links point to `DASHBOARD_URL` (default `https://ass.clewig.fr`).
+
 If a test mail fails, `docker compose logs monitor` shows the SMTP server's answer. With port 587, set `SMTP_TLS=starttls`.
 
 ## 7. Moving to an SSD later

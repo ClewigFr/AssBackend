@@ -15,6 +15,9 @@ import com.ass.ingest.ViewIngestor
 import com.ass.model.AssJson
 import com.ass.account.Quotas
 import com.ass.account.account
+import com.ass.account.mailerFromConfig
+import com.ass.account.passwordReset
+import com.ass.dao.PasswordResets
 import com.ass.routing.health
 import com.ass.routing.root
 import com.ass.retention.Retention
@@ -106,6 +109,11 @@ fun Application.module() {
         }
     }
 
+    val mailer = mailerFromConfig(isDev)
+    attributes.put(MailerKey, mailer)
+    // Where the reset links point: DASHBOARD_URL, else the first CORS origin
+    val dashboardUrl = (environment.config.propertyOrNull("ktor.security.dashboard_url")?.getString()?.takeIf { it.isNotBlank() }
+        ?: corsOrigins.first()).trimEnd('/')
     installModule()
     routing {
         root()
@@ -118,6 +126,7 @@ fun Application.module() {
         )
         apps(db, pageCache, statsService, quotas)
         account(db, quotas, pageCache, statsService, rateLimited = authRateLimit > 0)
+        passwordReset(db, mailer, dashboardUrl, rateLimited = authRateLimit > 0)
         login(db, rateLimited = authRateLimit > 0)
         register(db, rateLimited = authRateLimit > 0)
     }
@@ -125,6 +134,7 @@ fun Application.module() {
 
 /** The retention job of a running application (tests run it directly). */
 val RetentionKey = AttributeKey<Retention>("Retention")
+val MailerKey = AttributeKey<com.ass.mail.Mailer>("Mailer")
 
 /** The ingestor of a running application (tests use it to wait for buffered writes). */
 val IngestorKey = AttributeKey<ViewIngestor>("ViewIngestor")
@@ -236,9 +246,9 @@ val Application.registrationOpen: Boolean
 // Database init: also adds columns introduced after the tables were first created
 fun databaseInitialization(db: Db) {
     transaction(db.database) {
-        SchemaUtils.create(Users, Apps, Pages, PagesViews, PagesDaily)
+        SchemaUtils.create(Users, Apps, Pages, PagesViews, PagesDaily, PasswordResets)
         // Add missing columns and indexes, but never drop anything automatically
-        MigrationUtils.statementsRequiredForDatabaseMigration(Users, Apps, Pages, PagesViews, PagesDaily, withLogs = false)
+        MigrationUtils.statementsRequiredForDatabaseMigration(Users, Apps, Pages, PagesViews, PagesDaily, PasswordResets, withLogs = false)
             .filterNot { it.trimStart().startsWith("DROP", ignoreCase = true) || it.contains(" DROP ", ignoreCase = true) }
             .forEach { exec(it) }
     }
@@ -265,7 +275,7 @@ private val Application.sessionSignKey: ByteArray
 /**
  * Origins allowed by CORS, e.g. "https://dashboard.example.com,http://localhost:8080".
  */
-private val Application.corsOrigins: List<String>
+internal val Application.corsOrigins: List<String>
     get() = environment.config.property("ktor.security.cors_origins").getString()
         .split(',').map { it.trim().trimEnd('/') }.filter { it.contains("://") }
 

@@ -17,12 +17,14 @@ Everything is set through environment variables, which are read in `resources/ap
 | `INGEST_CAPACITY`   | no              | `500000`           | Max page views waiting to be written; beyond that `/views` answers `503` |
 | `VIEWS_RATE_LIMIT`  | no              | `600`              | Max `POST /views` per client IP per minute (`0` disables it) |
 | `VIEWS_PER_MINUTE`  | no              | `20000`            | Max page views accepted per client IP per minute, answered `429` beyond (`0` disables it; keep it above 1000, the largest batch) |
-| `AUTH_RATE_LIMIT`   | no              | `10`               | Max `POST /login`, `POST /register`, `POST /account/password` and `DELETE /account` per client IP per minute (`0` disables it) |
+| `AUTH_RATE_LIMIT`   | no              | `10`               | Max `POST /login`, `POST /register`, `POST /account/password`, `DELETE /account` and `POST /password/*` per client IP per minute (`0` disables it) |
 | `STATS_CACHE_MS`    | no              | `5000`             | How long stats results are cached (`0` disables the cache) |
 | `RETENTION_DAYS`    | no              | `90`               | How long raw page views (with their session ids) are kept. Older ones become views per page and per day, see [Data retention](#data-retention). `0` keeps everything |
 | `MAX_APPS`          | no              | `5`                | Applications per account; creating more answers `403`. `0`: no limit, like the two below |
 | `MAX_PAGES_PER_APP` | no              | `30`               | Pages per application; adding more (one page or a CSV import) answers `403` |
 | `MAX_MONTHLY_VIEWS` | no              | `100000`           | Views per account and calendar month (UTC). A **soft** limit: views keep being recorded, the dashboard shows an alert. See [Quotas](#quotas) |
+| `SMTP_HOST`         | no              |                    | SMTP server for the password reset emails, with `SMTP_PORT` (`465`), `SMTP_TLS` (`ssl`, `starttls` or `off`), `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM` (default `SMTP_USER`). Without it, emails are logged in dev and not sent in production |
+| `DASHBOARD_URL`     | no              | first `CORS_ORIGINS` | Base of the links in the emails (`<DASHBOARD_URL>/#/reset?token=…`) |
 | `KTOR_ENV`          | no              | `dev`              | `dev` uses H2; any other value uses PostgreSQL |
 | `PORT`              | no              | `8080`             | HTTP port                                |
 
@@ -51,7 +53,8 @@ Things to know:
 - **Sessions expire after 7 days**, checked on the server. A stolen cookie stops working after that, even though it's signed.
 - **Brute-force protection:** after 5 wrong passwords, an account refuses logins for 15 minutes (`429`). The counter is kept in memory, per server instance.
 - **Registration is closed in production by default.** To create accounts, set `REGISTRATION_OPEN=true`. Each account only sees its own applications and stats.
-- Login takes the same time whether or not the email exists, so it doesn't reveal which accounts exist.
+- Login takes the same time whether or not the email exists, so it doesn't reveal which accounts exist. So does `POST /password/forgot`: the email is sent in the background.
+- Password reset links hold a random 256-bit token; only its SHA-256 is stored, so the database alone can't be used to reset a password.
 - `POST /views` accepts at most 1000 views per request (the Android client's retry file cap) and 1 MB of JSON once decompressed. Bigger batches get `400`.
 - `POST /views` bodies may be gzipped (`Content-Encoding: gzip`); every response advertises it with `Accept-Encoding: gzip`, and the Android library only compresses once it has seen that header. `429` and `503` carry `Retry-After`.
 
@@ -173,6 +176,8 @@ See [Configuration](#configuration) for the variables that are required in produ
 | `GET`    | `/apps/{app}/stats` | owner | Stats for a period, see below |
 | `GET`    | `/account`    | login | `{"email","displayName","quotas":{"maxApps","maxPagesPerApp","maxMonthlyViews"},"usage":{"apps","monthViews","monthStart"}}`. `monthViews` counts every application of the account since `monthStart` (the 1st of the month, UTC); a quota of `0` means no limit |
 | `POST`   | `/account/password` | login | `{"current","new"}` → `204`, with a new session cookie: every other session (other devices) is signed out. `403` if `current` is wrong, `400` if `new` isn't 8 characters to 72 bytes |
+| `POST`   | `/password/forgot` | none | `{"email"}` → `204` whether or not the account exists. If it does, emails a reset link valid 1 hour, usable once (at most 3 pending per account) |
+| `POST`   | `/password/reset` | none | `{"token","new"}` → `204`: sets the password, signs out every session and cancels the other links. `400` if the link is unknown, used or expired, or the password isn't 8 characters to 72 bytes |
 | `DELETE` | `/account`    | login | `{"password"}` → `204`: deletes the account, its applications, pages and views, and ends the session. `403` if the password is wrong |
 
 Another user's application answers `404`, exactly like one that doesn't exist. Going over a [quota](#quotas) answers `403`.

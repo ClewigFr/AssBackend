@@ -54,6 +54,7 @@ dependencies {
     implementation "com.h2database:h2:$h2_version"
     implementation "org.postgresql:postgresql:$postgresql_version"
     implementation "org.mindrot:jbcrypt:$jbcrypt_version"
+    implementation "org.eclipse.angus:angus-mail:$angus_mail_version"
 
     testImplementation platform("io.ktor:ktor-bom:$ktor_version")
     testImplementation 'io.ktor:ktor-server-test-host'

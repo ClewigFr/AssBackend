@@ -102,3 +102,6 @@ suspend fun ApplicationTestBuilder.appWithPage(cookie: String): Pair<String, Str
 
 fun viewJson(page: String, elapsed: Long = 1000, session: String = UUID.randomUUID().toString()) =
     """{"page":"$page","sessionId":"$session","timestamp":$elapsed}"""
+
+/** Emails "sent" by the running application (logged, not sent, without SMTP settings). */
+fun ApplicationTestBuilder.sentMails() = (apps.getValue(this).attributes[MailerKey] as com.ass.mail.LogMailer).sent

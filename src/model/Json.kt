@@ -113,3 +113,9 @@ data class UsageOut(val apps: Long, val monthViews: Long, val monthStart: Long)
 
 @Serializable
 data class AccountOut(val email: String, val displayName: String, val quotas: QuotasOut, val usage: UsageOut)
+
+@Serializable
+data class ForgotIn(val email: String? = null)
+
+@Serializable
+data class ResetIn(val token: String? = null, val new: String? = null)

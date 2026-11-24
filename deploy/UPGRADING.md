@@ -101,6 +101,10 @@ The first backend version with quotas limits each account to 5 applications, 30 
 
 The `monitor` service is new in `docker-compose.yml`. Bring the deploy folder to the Pi (see "Updating the deploy folder"), add the `SMTP_*` and `MAIL_TO` settings to `.env`, then follow "Monitoring" in [README.md](README.md#6-monitoring). Rebuild the backup image too (`docker compose build backup`): it now records the last successful backup for the report.
 
+### Password reset
+
+The first backend version with "Mot de passe oublié ?" sends the reset emails with the `SMTP_*` settings of the monitoring, and creates the `passwordresets` table on start. Bring the new `docker-compose.yml` to the Pi: the old one doesn't pass the `SMTP_*` settings to the backend. Without them, the link is never sent (the backend logs a warning). Update the backend first, then the dashboard.
+
 ## Rolling back
 
 1. Pin the previous version in `.env`:

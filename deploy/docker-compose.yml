@@ -49,6 +49,14 @@ services:
       MAX_APPS: ${MAX_APPS:-5}
       MAX_PAGES_PER_APP: ${MAX_PAGES_PER_APP:-30}
       MAX_MONTHLY_VIEWS: ${MAX_MONTHLY_VIEWS:-100000}
+      # Password reset emails, with the same mailbox as the monitoring
+      DASHBOARD_URL: ${DASHBOARD_URL:-https://ass.clewig.fr}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_TLS: ${SMTP_TLS:-ssl}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
     # Only reachable inside the stack (through the tunnel); 127.0.0.1 for checks on the Pi itself
     ports: ["127.0.0.1:${BACKEND_LOCAL_PORT:-8099}:8080"]
     mem_limit: 768m
