@@ -31,6 +31,7 @@ Everything is set through environment variables, which are read in `resources/ap
 | `SIGNUP_MIN_SECONDS` | no             | `3`                | `POST /register` needs a `formToken` from `GET /register/form`; a sign-up sent sooner after it is treated as a bot (`0` disables the form token) |
 | `MAX_SIGNUPS_PER_HOUR` | no           | `30`               | Accounts created per hour, all clients together (`429` over it, `0`: no cap) |
 | `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET` | no |              | Cloudflare Turnstile on sign-up, on when both are set |
+| `LEGACY_VIEWS`      | no              | `false`            | `true` accepts `POST /views` bodies without `"app"`: library before 0.3.0, or the deprecated `getInstance(context, verbose)` (see [Applications](#applications)) |
 | `KTOR_ENV`          | no              | `dev`              | `dev` uses H2; any other value uses PostgreSQL |
 | `PORT`              | no              | `8080`             | HTTP port                                |
 
@@ -222,7 +223,7 @@ There is no "users" figure: the library only knows a random session id per app l
 
 ### Applications
 
-A user creates **applications** (name + generated UUID), and adds **pages** to each (name + generated UUID). The Android library is initialized with the application's UUID and calls `logScreen` with a page's UUID. `POST /views` then only accepts pages that belong to that application. Older library versions that don't send `"app"` still work: their views are attributed to the page's application.
+A user creates **applications** (name + generated UUID), and adds **pages** to each (name + generated UUID). The Android library is initialized with the application's UUID and calls `logScreen` with a page's UUID. `POST /views` then only accepts pages that belong to that application. Bodies without `"app"` are refused with `400` (and the library drops them), unless `LEGACY_VIEWS=true`. Two kinds of apps don't send it: those on a library version before 0.3.0 (no `AssConfig`), and those still calling the deprecated `getInstance(context, verbose)`. Set it while such an app is in use; their views are then attributed to the page's application.
 
 When upgrading an existing database, pages created before applications are moved automatically, on startup, into an "Application par défaut" per owner, and existing views are linked to it.
 | `GET`    | `/register/form` | none | `{"formToken","turnstileSiteKey"?,"emailVerification"}`, to load with the sign-up form |
