@@ -9,6 +9,7 @@ The whole service on one Raspberry Pi (or any arm64/amd64 Linux box) with Docker
 | `dashboard` | the dashboard, served by nginx (image `ghcr.io/clewigfr/assfrontend`) | `https://ass.clewig.fr` |
 | `cloudflared` | Cloudflare Tunnel: HTTPS, no port opened on the router, home IP hidden | |
 | `backup` | nightly encrypted dump to Backblaze B2 | |
+| `monitor` | resource and storage monitoring, daily report and alerts by email | |
 
 The images are built by the CI of each repository on every push to `master` and published to GitHub Packages.
 
@@ -132,7 +133,47 @@ rm age-key.txt
 
 The restore replaces the current tables. **Try it once** after the first backup, so you know it works before you need it.
 
-## 6. Moving to an SSD later
+## 6. Monitoring
+
+The `monitor` service measures the Pi every minute and emails you:
+- **a daily report** (`REPORT_SCHEDULE`, 8:00 by default) of the last 24 hours:
+  - for the machine: average and peak (with the time) of CPU, load, RAM, swap and temperature, plus the Pi's throttling flags (undervoltage, reduced frequency) since boot;
+  - for the storage: space used, **bytes written** to the SD card over the day with a projection over a year, and the storage errors the kernel reported. That's how SD card wear shows: a card gives no wear percentage like an SSD;
+  - for each container: average and peak CPU and RAM, and restarts;
+  - for the service: views received, database size and the last successful backup;
+- **an alert right away**, at most once every 6 hours per kind, when:
+  - the disk is over 85 % full (`ALERT_DISK_PERCENT`);
+  - the CPU is at 80 °C or more (`ALERT_TEMP`);
+  - the Pi is being throttled;
+  - the kernel reports a storage error;
+  - a container of the stack has stopped. You also get this alert when you stop one yourself, for example during a restore.
+
+It writes a few hundred KB a day (in `DATA_DIR/monitor`, two days kept) and uses about 10 MB of RAM. It reads the host's counters read-only (`/sys/fs/cgroup`, `/var/lib/docker/containers`) and has no access to the Docker socket, so it can't control anything.
+
+Setup, with an OVH mailbox (Web Cloud > Emails, or the one that comes with your domain):
+1. In `.env`:
+   ```
+   SMTP_HOST=ssl0.ovh.net
+   SMTP_PORT=465
+   SMTP_USER=monitoring@clewig.fr      # the full address of the mailbox
+   SMTP_PASSWORD=…                     # that mailbox's password
+   MAIL_TO=you@example.com             # where reports go (can be the same address)
+   ```
+   OVH only sends from the authenticated address, so the mails come from `SMTP_USER` (set `MAIL_FROM` only to another address of the same mailbox).
+2. Start it and send a test mail:
+   ```bash
+   docker compose up -d --build monitor
+   docker compose run --rm monitor test-mail.sh
+   ```
+3. A report needs some measurements first: after a few minutes, send one right away to see what it looks like:
+   ```bash
+   docker compose exec monitor report.sh
+   ```
+4. Optional: so you know when the monitoring itself is down, create another check on healthchecks.io with a 1 day period and a few hours of grace, and put its ping URL in `MONITOR_HEALTHCHECK_URL`. It's pinged after each report sent.
+
+If a test mail fails, `docker compose logs monitor` shows the SMTP server's answer. With port 587, set `SMTP_TLS=starttls`.
+
+## 7. Moving to an SSD later
 
 The Pi 5 takes an NVMe SSD through an M.2 HAT. The data is only in `DATA_DIR`, so:
 
@@ -151,7 +192,7 @@ You can also restore a backup onto a new Pi instead of copying: start the stack 
 
 ## Memory
 
-Limits set in `docker-compose.yml` (`mem_limit`): PostgreSQL 1 GB, backend 768 MB, dashboard 64 MB, tunnel 128 MB, backup 256 MB. That's about 2.2 GB at most, so it fits on a 2 GB Pi and leaves plenty on the 8 GB one.
+Limits set in `docker-compose.yml` (`mem_limit`): PostgreSQL 1 GB, backend 768 MB, dashboard 64 MB, tunnel 128 MB, backup 256 MB, monitor 64 MB. That's about 2.3 GB at most, so it fits on a 2 GB Pi and leaves plenty on the 8 GB one.
 
 ## Useful commands
 

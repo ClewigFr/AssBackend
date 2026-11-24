@@ -98,3 +98,40 @@ services:
       - ${BACKUP_LOCAL_DIR:-./backups}:/local
     mem_limit: 256m
     logging: *logging
+
+  # Resource and storage monitoring of the host: daily report and alerts by email, see monitor/
+  monitor:
+    build: ./monitor
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      REPORT_SCHEDULE: ${REPORT_SCHEDULE:-0 8 * * *}
+      REPORT_HOST_NAME: ${REPORT_HOST_NAME:-raspberrypi}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_TLS: ${SMTP_TLS:-ssl}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      MAIL_TO: ${MAIL_TO:-}
+      MONITOR_HEALTHCHECK_URL: ${MONITOR_HEALTHCHECK_URL:-}
+      ALERT_DISK_PERCENT: ${ALERT_DISK_PERCENT:-85}
+      ALERT_TEMP: ${ALERT_TEMP:-80}
+      PGHOST: postgres
+      PGUSER: ass
+      PGDATABASE: ass
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    # Kernel messages, to spot storage errors
+    cap_add: [SYSLOG]
+    volumes:
+      - ${DATA_DIR:-./data}/monitor:/state
+      - ${DATA_DIR:-./data}:/data:ro
+      - ${BACKUP_LOCAL_DIR:-./backups}:/backups:ro
+      # Read only: per-container CPU and memory, and Docker's container files (names, restarts).
+      # No Docker socket: the monitor can't control anything.
+      - /sys/fs/cgroup:/cgroup:ro
+      - /var/lib/docker/containers:/containers:ro
+    mem_limit: 64m
+    logging: *logging

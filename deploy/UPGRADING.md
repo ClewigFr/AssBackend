@@ -97,6 +97,10 @@ Expect `Rolled up N page views older than 90 days into daily counts` in the logs
 
 The first backend version with quotas limits each account to 5 applications, 30 pages per application and 100,000 views per month (an alert only). Nothing existing is deleted: an account already above a limit keeps its applications and pages, it just can't add more. To change the limits, set `MAX_APPS`, `MAX_PAGES_PER_APP` or `MAX_MONTHLY_VIEWS` in `.env` (`0` = no limit), then bring the new `docker-compose.yml` to the Pi (see "Updating the deploy folder"): the old one doesn't pass these variables to the backend. Update the dashboard too: it has the **Mon compte** page and shows the limits.
 
+### Adding the monitoring
+
+The `monitor` service is new in `docker-compose.yml`. Bring the deploy folder to the Pi (see "Updating the deploy folder"), add the `SMTP_*` and `MAIL_TO` settings to `.env`, then follow "Monitoring" in [README.md](README.md#6-monitoring). Rebuild the backup image too (`docker compose build backup`): it now records the last successful backup for the report.
+
 ## Rolling back
 
 1. Pin the previous version in `.env`:

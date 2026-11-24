@@ -33,4 +33,6 @@ rclone delete --min-age 28d "$BACKUP_REMOTE/weekly" 2> /dev/null || true
 rclone delete --min-age 183d "$BACKUP_REMOTE/monthly" 2> /dev/null || true
 
 echo "Backup OK: $name ($size)"
+# Read by the monitoring report
+echo "$(date +%s) $name $size" > /local/last-backup 2> /dev/null || true
 ping ""
