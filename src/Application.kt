@@ -20,6 +20,10 @@ import com.ass.account.account
 import com.ass.account.mailerFromConfig
 import com.ass.account.passwordReset
 import com.ass.dao.PasswordResets
+import com.ass.dao.EmailVerifications
+import com.ass.signup.EmailVerification
+import com.ass.signup.SignupGuard
+import com.ass.signup.TurnstileVerifier
 import com.ass.dao.ViewsDropped
 import com.ass.routing.health
 import com.ass.routing.root
@@ -50,6 +54,7 @@ import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.autohead.AutoHeadResponse
 import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
+import com.ass.auth.clientKey
 import io.ktor.server.plugins.origin
 import io.ktor.server.plugins.ratelimit.RateLimit
 import io.ktor.server.plugins.statuspages.StatusPages
@@ -129,6 +134,25 @@ fun Application.module() {
     // Where the reset links point: DASHBOARD_URL, else the first CORS origin
     val dashboardUrl = (environment.config.propertyOrNull("ktor.security.dashboard_url")?.getString()?.takeIf { it.isNotBlank() }
         ?: corsOrigins.first()).trimEnd('/')
+    val verification = if (configBool("ktor.security.email_verification", true)) EmailVerification(db, mailer, dashboardUrl) else null
+    verification?.let { attributes.put(VerificationKey, it) }
+    if (verification != null) launch {
+        while (true) {
+            try { verification.purge() } catch (e: Exception) { log.error("Purging unverified accounts failed", e) }
+            delay(1.hours)
+        }
+    }
+    val turnstileSecret = configString("ktor.security.turnstile_secret")
+    val signup = SignupProtection(
+        guard = SignupGuard(
+            minSeconds = configInt("ktor.security.signup_min_seconds", 3),
+            maxPerHour = configInt("ktor.security.max_signups_per_hour", 30)
+        ),
+        captcha = turnstileSecret?.let { TurnstileVerifier(it) },
+        captchaSiteKey = configString("ktor.security.turnstile_site_key"),
+        verification = verification
+    )
+    if (turnstileSecret != null && signup.captchaSiteKey == null) log.warn("TURNSTILE_SECRET is set without TURNSTILE_SITE_KEY: the dashboard can't show the widget")
     installModule()
     routing {
         root()
@@ -142,18 +166,25 @@ fun Application.module() {
         apps(db, pageCache, statsService, quotas)
         account(db, quotas, pageCache, statsService, rateLimited = authRateLimit > 0)
         passwordReset(db, mailer, dashboardUrl, rateLimited = authRateLimit > 0)
-        login(db, rateLimited = authRateLimit > 0)
-        register(db, rateLimited = authRateLimit > 0)
+        login(db, rateLimited = authRateLimit > 0, verification)
+        register(db, rateLimited = authRateLimit > 0, signup)
     }
 }
 
 /** The retention job of a running application (tests run it directly). */
 val RetentionKey = AttributeKey<Retention>("Retention")
 val GuardKey = AttributeKey<ViewGuard>("ViewGuard")
+val VerificationKey = AttributeKey<EmailVerification>("EmailVerification")
 val MailerKey = AttributeKey<com.ass.mail.Mailer>("Mailer")
 
 /** The ingestor of a running application (tests use it to wait for buffered writes). */
 val IngestorKey = AttributeKey<ViewIngestor>("ViewIngestor")
+
+private fun Application.configString(path: String) =
+    environment.config.propertyOrNull(path)?.getString()?.takeIf { it.isNotBlank() }
+
+private fun Application.configBool(path: String, default: Boolean) =
+    configString(path)?.toBooleanStrictOrNull() ?: default
 
 private fun Application.configInt(path: String, default: Int) =
     environment.config.propertyOrNull(path)?.getString()?.toIntOrNull() ?: default
@@ -240,11 +271,11 @@ fun Application.installModule() {
         install(RateLimit) {
             if (limit > 0) register(VIEWS_RATE_LIMIT) {
                 rateLimiter(limit = limit, refillPeriod = 60.seconds)
-                requestKey { call -> call.request.origin.remoteHost }
+                requestKey { call -> call.clientKey }
             }
             if (authLimit > 0) register(AUTH_RATE_LIMIT) {
                 rateLimiter(limit = authLimit, refillPeriod = 60.seconds)
-                requestKey { call -> call.request.origin.remoteHost }
+                requestKey { call -> call.clientKey }
             }
         }
     }
@@ -262,9 +293,9 @@ val Application.registrationOpen: Boolean
 // Database init: also adds columns introduced after the tables were first created
 fun databaseInitialization(db: Db) {
     transaction(db.database) {
-        SchemaUtils.create(Users, Apps, Pages, PagesViews, PagesDaily, PasswordResets, ViewsDropped)
+        SchemaUtils.create(Users, Apps, Pages, PagesViews, PagesDaily, PasswordResets, ViewsDropped, EmailVerifications)
         // Add missing columns and indexes, but never drop anything automatically
-        MigrationUtils.statementsRequiredForDatabaseMigration(Users, Apps, Pages, PagesViews, PagesDaily, PasswordResets, ViewsDropped, withLogs = false)
+        MigrationUtils.statementsRequiredForDatabaseMigration(Users, Apps, Pages, PagesViews, PagesDaily, PasswordResets, ViewsDropped, EmailVerifications, withLogs = false)
             .filterNot { it.trimStart().startsWith("DROP", ignoreCase = true) || it.contains(" DROP ", ignoreCase = true) }
             .forEach { exec(it) }
     }

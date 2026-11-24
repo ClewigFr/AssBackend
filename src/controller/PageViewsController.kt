@@ -6,6 +6,7 @@ import com.ass.ingest.ViewGuard
 import com.ass.ingest.ViewIngestor
 import com.ass.ingest.ViewRow
 import io.ktor.http.HttpStatusCode
+import com.ass.auth.clientKey
 import io.ktor.server.plugins.origin
 import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.plugins.ratelimit.rateLimit
@@ -78,10 +79,10 @@ private fun Route.viewsRoute(pageCache: PageCache, ingestor: ViewIngestor, budge
             } else null
         }
         // Views over the flood limits are dropped like invalid ones: the client must not retry them
-        val rows = if (valid.isEmpty()) valid else guard.filter(call.request.origin.remoteHost, valid, now)
+        val rows = if (valid.isEmpty()) valid else guard.filter(call.clientKey, valid, now)
         val status = when {
             rows.isEmpty() -> HttpStatusCode.BadRequest
-            !budget.take(call.request.origin.remoteHost, rows.size, now) -> {
+            !budget.take(call.clientKey, rows.size, now) -> {
                 call.response.header(HttpHeaders.RetryAfter, BUDGET_RETRY_AFTER_S.toString())
                 HttpStatusCode.TooManyRequests
             }

@@ -101,6 +101,8 @@ fun Route.passwordReset(db: Db, mailer: Mailer, dashboardUrl: String, rateLimite
                     Users.update({ Users.id eq user }) {
                         it[passwordHash] = hash
                         it[sessionVersion] = sessionVersion + 1
+                        // The link came by email: the address is proven
+                        it[emailVerified] = true
                     }
                     PasswordResets.deleteWhere { PasswordResets.user eq user }
                     true
@@ -114,10 +116,10 @@ fun Route.passwordReset(db: Db, mailer: Mailer, dashboardUrl: String, rateLimite
 
 private val random = SecureRandom()
 
-private fun newToken(): String = ByteArray(32).also { random.nextBytes(it) }
+internal fun newToken(): String = ByteArray(32).also { random.nextBytes(it) }
     .let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
 
-private fun sha256(token: String): String = hex(MessageDigest.getInstance("SHA-256").digest(token.toByteArray()))
+internal fun sha256(token: String): String = hex(MessageDigest.getInstance("SHA-256").digest(token.toByteArray()))
 
 private fun resetEmail(link: String) = """
     Bonjour,

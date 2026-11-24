@@ -82,11 +82,12 @@ curl http://127.0.0.1:8099/health   # OK
 
 Then open https://ass.clewig.fr.
 
-**Create your account:** set `REGISTRATION_OPEN=true` in `.env`, run `docker compose up -d backend`, and register with:
-```bash
-curl -X POST https://ass-api.clewig.fr/register -d email=you@example.com -d password='…' -d displayName=You
-```
-Then set it back to `false` and run `docker compose up -d backend` again.
+**Create your account:** set `REGISTRATION_OPEN=true` in `.env`, run `docker compose up -d backend`, and use "Créer un compte" on the dashboard's login page, then open the link emailed to you (SMTP must be set up, see section 6; without it, set `EMAIL_VERIFICATION=false`). Set `REGISTRATION_OPEN` back to `false` if strangers shouldn't sign up, and run `docker compose up -d backend` again.
+
+**Bots on the sign-up form:** a honeypot, a form token, an hourly cap (`MAX_SIGNUPS_PER_HOUR`) and email verification are on by default. For a CAPTCHA, create a Turnstile widget for the dashboard's hostname in the Cloudflare dashboard (Turnstile → Add widget, "Managed") and set `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET` in `.env`.
+- The widget's hostname is the **dashboard's** (`ass.clewig.fr`), not the API's: the widget runs on the dashboard page, only the secret is used by the backend.
+- If Cloudflare can't be reached to check a token, the sign-up is refused (fails closed); the person can retry.
+- To try it locally, use Cloudflare's test keys, which always pass: site key `1x00000000000000000000AA`, secret `1x0000000000000000000000000000000AA` (`2x0000000000000000000000000000000AA` always fails).
 
 **Update** after a push to `master`: see [UPGRADING.md](UPGRADING.md) (backend, dashboard or both, database changes, rollback).
 

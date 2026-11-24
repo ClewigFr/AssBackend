@@ -32,6 +32,9 @@ fun withServer(vararg extraConfig: Pair<String, String>, test: suspend Applicati
                 "ktor.performance.flush_interval_ms" to "10",
                 "ktor.performance.stats_cache_ms" to "0",
                 "ktor.performance.auth_rate_limit" to "0",
+                // Turned on by the tests of these features
+                "ktor.security.email_verification" to "false",
+                "ktor.security.signup_min_seconds" to "0",
                 *extraConfig
             )
         }
@@ -105,3 +108,6 @@ fun viewJson(page: String, elapsed: Long = 1000, session: String = UUID.randomUU
 
 /** Emails "sent" by the running application (logged, not sent, without SMTP settings). */
 fun ApplicationTestBuilder.sentMails() = (apps.getValue(this).attributes[MailerKey] as com.ass.mail.LogMailer).sent
+
+/** The email verification of the running application (with email_verification on). */
+fun ApplicationTestBuilder.emailVerification() = apps.getValue(this).attributes[VerificationKey]

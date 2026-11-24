@@ -26,7 +26,11 @@ Everything is set through environment variables, which are read in `resources/ap
 | `MAX_PAGES_PER_APP` | no              | `30`               | Pages per application; adding more (one page or a CSV import) answers `403` |
 | `MAX_MONTHLY_VIEWS` | no              | `100000`           | Views per account and calendar month (UTC). A **soft** limit: views keep being recorded, the dashboard shows an alert. See [Quotas](#quotas) |
 | `SMTP_HOST`         | no              |                    | SMTP server for the password reset emails, with `SMTP_PORT` (`465`), `SMTP_TLS` (`ssl`, `starttls` or `off`), `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM` (default `SMTP_USER`). Without it, emails are logged in dev and not sent in production |
-| `DASHBOARD_URL`     | no              | first `CORS_ORIGINS` | Base of the links in the emails (`<DASHBOARD_URL>/#/reset?token=…`) |
+| `DASHBOARD_URL`     | no              | first `CORS_ORIGINS` | Base of the links in the emails (`<DASHBOARD_URL>/#/reset?token=…`, `/#/verify?token=…`) |
+| `EMAIL_VERIFICATION` | no             | `true`             | New accounts can't sign in until they open the link emailed to them (valid 24 hours); unverified accounts are deleted after 24 hours. Needs `SMTP_HOST` |
+| `SIGNUP_MIN_SECONDS` | no             | `3`                | `POST /register` needs a `formToken` from `GET /register/form`; a sign-up sent sooner after it is treated as a bot (`0` disables the form token) |
+| `MAX_SIGNUPS_PER_HOUR` | no           | `30`               | Accounts created per hour, all clients together (`429` over it, `0`: no cap) |
+| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET` | no |              | Cloudflare Turnstile on sign-up, on when both are set |
 | `KTOR_ENV`          | no              | `dev`              | `dev` uses H2; any other value uses PostgreSQL |
 | `PORT`              | no              | `8080`             | HTTP port                                |
 
@@ -55,6 +59,8 @@ Things to know:
 - **Sessions expire after 7 days**, checked on the server. A stolen cookie stops working after that, even though it's signed.
 - **Brute-force protection:** after 5 wrong passwords, an account refuses logins for 15 minutes (`429`). The counter is kept in memory, per server instance.
 - **Registration is closed in production by default.** To create accounts, set `REGISTRATION_OPEN=true`. Each account only sees its own applications and stats.
+- **Sign-up bot protection:** a hidden honeypot field and a signed form token (too fast = bot; both get a fake `201` and nothing is created), an optional Turnstile CAPTCHA, an hourly cap on accounts, and email verification (with it on, `/register` doesn't reveal whether an address is registered).
+- Per-IP limits key IPv6 clients by their `/64` prefix, since one subscriber usually gets a whole `/64`.
 - Login takes the same time whether or not the email exists, so it doesn't reveal which accounts exist. So does `POST /password/forgot`: the email is sent in the background.
 - Password reset links hold a random 256-bit token; only its SHA-256 is stored, so the database alone can't be used to reset a password.
 - `POST /views` accepts at most 1000 views per request (the Android client's retry file cap) and 1 MB of JSON once decompressed. Bigger batches get `400`.
@@ -219,7 +225,9 @@ There is no "users" figure: the library only knows a random session id per app l
 A user creates **applications** (name + generated UUID), and adds **pages** to each (name + generated UUID). The Android library is initialized with the application's UUID and calls `logScreen` with a page's UUID. `POST /views` then only accepts pages that belong to that application. Older library versions that don't send `"app"` still work: their views are attributed to the page's application.
 
 When upgrading an existing database, pages created before applications are moved automatically, on startup, into an "Application par défaut" per owner, and existing views are linked to it.
-| `POST`   | `/register`   | none  | Form fields: `email` (case-insensitive, max 128), `password` (8 characters to 72 bytes), `displayName` (max 256) |
+| `GET`    | `/register/form` | none | `{"formToken","turnstileSiteKey"?,"emailVerification"}`, to load with the sign-up form |
+| `POST`   | `/register`   | none  | Form fields: `email` (case-insensitive, max 128), `password` (8 characters to 72 bytes), `displayName` (max 256), `formToken`, `cf-turnstile-response` (with Turnstile) and the empty honeypot `website`. `201` with a session, or `201 "Check your email"` without one when email verification is on (also for an address already registered). `400 "Form expired…"`: reload the form token |
+| `POST`   | `/register/verify` | none | `{"token"}` from the verification email → `200 "Logged"` with a session; `400` if unknown or expired. `POST /login` on an unverified account answers `403 "Email not verified"` and sends a new link |
 | `POST`   | `/login`      | none  | Form fields: `userId` (email), `password` |
 | `POST`   | `/logout`     | none  | Clear the session and revoke every session of the user (all devices) |
 

@@ -43,13 +43,15 @@ suspend fun verifyUser(db: Db, email: String, password: String): User? {
 
 private val DUMMY_HASH: String by lazy { hashPassword("not-a-real-password") }
 
-suspend fun createUser(db: Db, email: String, displayName: String, password: String): User {
+suspend fun createUser(db: Db, email: String, displayName: String, password: String, verified: Boolean = true): User {
     val hash = withContext(Dispatchers.Default) { hashPassword(password) }
     return db.query {
         User.new {
             this.email = normalizeEmail(email)
             this.displayName = displayName
             passwordHash = hash
+            emailVerified = verified
+            createdAt = System.currentTimeMillis()
         }
     }
 }

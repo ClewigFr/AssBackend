@@ -11,4 +11,6 @@ class User(id: EntityID<Int>) : IntEntity(id) {
     var displayName by Users.displayName
     var passwordHash by Users.passwordHash
     var sessionVersion by Users.sessionVersion
+    var emailVerified by Users.emailVerified
+    var createdAt by Users.createdAt
 }

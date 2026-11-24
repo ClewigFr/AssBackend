@@ -8,7 +8,10 @@ import com.ass.dao.revokeSessions
 import com.ass.dao.userNameValid
 import com.ass.dao.verifyUser
 import com.ass.db.Db
+import com.ass.signup.EmailVerification
+import kotlinx.coroutines.launch
 import io.ktor.http.HttpStatusCode
+import com.ass.auth.clientKey
 import io.ktor.server.plugins.origin
 import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.request.receiveParameters
@@ -23,7 +26,7 @@ import io.ktor.server.sessions.sessions
 /**
  * Registers the [Login] and [Logout] routes '/login' and '/logout'.
  */
-fun Route.login(db: Db, rateLimited: Boolean) {
+fun Route.login(db: Db, rateLimited: Boolean, verification: EmailVerification? = null) {
     /**
      * A GET request to the [Login], would respond with the login page
      */
@@ -42,7 +45,7 @@ fun Route.login(db: Db, rateLimited: Boolean) {
          * A POST request to the [Login] actually processes the [Parameters] to validate them, if valid it sets the session.
          */
         limitedTo(rateLimited) { post {
-            val client = call.request.origin.remoteHost
+            val client = call.clientKey
             val post = call.receiveParameters()
             val userId = post["userId"] ?: ""
             val password = post["password"] ?: ""
@@ -61,6 +64,11 @@ fun Route.login(db: Db, rateLimited: Boolean) {
             if (login == null) {
                 LoginThrottle.recordFailure(userId, client)
                 call.respond(HttpStatusCode.Unauthorized, "Invalid username or password")
+            } else if (!login.emailVerified) {
+                // Right password but the address isn't confirmed yet: send the link again
+                LoginThrottle.recordSuccess(userId, client)
+                if (verification != null) call.application.launch { sendQuietly(call.application, verification, login) }
+                call.respond(HttpStatusCode.Forbidden, "Email not verified")
             } else {
                 LoginThrottle.recordSuccess(userId, client)
                 call.startSession(login)
