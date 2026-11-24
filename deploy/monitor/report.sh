@@ -74,6 +74,11 @@ echo "$containers" | grep -q "redémarrage" && warn "un conteneur a redémarré"
 # The service itself
 db_size=$(psql -tAc "select pg_size_pretty(pg_database_size(current_database()))" 2>/dev/null || echo "?")
 views=$(psql -tAc "select count(*) from pagesviews where \"timestamp\" >= $((from * 1000))" 2>/dev/null || echo "?")
+dropped_day=$(psql -tAF ' : ' -c "select a.name, sum(d.views) from viewsdropped d join apps a on a.id = d.app
+  where d.hour >= $(( from * 1000 - 3600000 )) group by a.name order by 2 desc" 2>/dev/null)
+[ -n "$dropped_day" ] && warn "des vues ont été ignorées par les limites anti-flood"
+peak=$(psql -tAc "select to_char(to_timestamp(h / 1000) at time zone current_setting('TimeZone'), 'DD/MM HH24:00') || ' (' || n || ' vues)'
+  from (select \"timestamp\" / 3600000 * 3600000 as h, count(*) as n from pagesviews where \"timestamp\" >= $((from * 1000)) group by 1 order by 2 desc limit 1) t" 2>/dev/null)
 backup="aucune information (le service backup écrit backups/last-backup après chaque sauvegarde réussie)"
 if [ -r /backups/last-backup ]; then
   read -r bts bname bsize < /backups/last-backup
@@ -105,7 +110,8 @@ status="tout va bien"; [ -n "$attention" ] && status="$(echo "$attention" | grep
   echo "${containers:-  aucune mesure}"
   echo
   echo "SERVICE"
-  echo "  Vues reçues sur 24 h : $views"
+  echo "  Vues reçues sur 24 h : $views${peak:+, heure la plus chargée : $peak}"
+  if [ -n "$dropped_day" ]; then echo "  Vues ignorées par les limites anti-flood :"; echo "$dropped_day" | sed 's/^/    /'; else echo "  Vues ignorées par les limites anti-flood : aucune"; fi
   echo "  Taille de la base : $db_size"
   echo "  Dernière sauvegarde : $backup"
 } > /tmp/report.txt

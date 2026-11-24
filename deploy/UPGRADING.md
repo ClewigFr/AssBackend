@@ -105,6 +105,10 @@ The `monitor` service is new in `docker-compose.yml`. Bring the deploy folder to
 
 The first backend version with "Mot de passe oublié ?" sends the reset emails with the `SMTP_*` settings of the monitoring, and creates the `passwordresets` table on start. Bring the new `docker-compose.yml` to the Pi: the old one doesn't pass the `SMTP_*` settings to the backend. Without them, the link is never sent (the backend logs a warning). Update the backend first, then the dashboard.
 
+### Flood protection
+
+The first backend version with flood limits creates the `viewsdropped` table on start and drops views beyond 2000 per IP and application per hour, or 500 per session and day (`VIEWS_PER_IP_APP_HOUR`, `VIEWS_PER_SESSION`). Rebuild the monitor too (`docker compose up -d --build monitor`): it reports dropped views and alerts on spikes. Update the dashboard for "Supprimer des vues".
+
 ## Rolling back
 
 1. Pin the previous version in `.env`:

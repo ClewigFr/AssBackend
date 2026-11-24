@@ -119,3 +119,6 @@ data class ForgotIn(val email: String? = null)
 
 @Serializable
 data class ResetIn(val token: String? = null, val new: String? = null)
+
+@Serializable
+data class DeletedOut(val deleted: Long)

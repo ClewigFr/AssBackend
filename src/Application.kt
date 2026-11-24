@@ -11,6 +11,8 @@ import com.ass.db.migrateToApplications
 import com.ass.db.widenViewIds
 import com.ass.ingest.PageCache
 import com.ass.ingest.ViewBudget
+import com.ass.ingest.ViewGuard
+import com.ass.ingest.saveDropped
 import com.ass.ingest.ViewIngestor
 import com.ass.model.AssJson
 import com.ass.account.Quotas
@@ -18,6 +20,7 @@ import com.ass.account.account
 import com.ass.account.mailerFromConfig
 import com.ass.account.passwordReset
 import com.ass.dao.PasswordResets
+import com.ass.dao.ViewsDropped
 import com.ass.routing.health
 import com.ass.routing.root
 import com.ass.retention.Retention
@@ -109,6 +112,18 @@ fun Application.module() {
         }
     }
 
+    val guard = ViewGuard(
+        perIpAppHour = configInt("ktor.performance.views_per_ip_app_hour", 2000),
+        perSession = configInt("ktor.performance.views_per_session", 500)
+    )
+    attributes.put(GuardKey, guard)
+    // Dropped views are counted in memory and written every minute, for the monitoring report
+    launch {
+        while (true) {
+            delay(60.seconds)
+            try { saveDropped(db, guard) } catch (e: Exception) { log.error("Saving dropped views failed", e) }
+        }
+    }
     val mailer = mailerFromConfig(isDev)
     attributes.put(MailerKey, mailer)
     // Where the reset links point: DASHBOARD_URL, else the first CORS origin
@@ -118,7 +133,7 @@ fun Application.module() {
     routing {
         root()
         health(db)
-        pageViews(pageCache, ingestor, ViewBudget(configInt("ktor.performance.views_per_minute", 20_000)), rateLimited = viewsRateLimit > 0)
+        pageViews(pageCache, ingestor, ViewBudget(configInt("ktor.performance.views_per_minute", 20_000)), guard, rateLimited = viewsRateLimit > 0)
         val quotas = Quotas(
             maxApps = configInt("ktor.quotas.max_apps", 5),
             maxPagesPerApp = configInt("ktor.quotas.max_pages_per_app", 30),
@@ -134,6 +149,7 @@ fun Application.module() {
 
 /** The retention job of a running application (tests run it directly). */
 val RetentionKey = AttributeKey<Retention>("Retention")
+val GuardKey = AttributeKey<ViewGuard>("ViewGuard")
 val MailerKey = AttributeKey<com.ass.mail.Mailer>("Mailer")
 
 /** The ingestor of a running application (tests use it to wait for buffered writes). */
@@ -246,9 +262,9 @@ val Application.registrationOpen: Boolean
 // Database init: also adds columns introduced after the tables were first created
 fun databaseInitialization(db: Db) {
     transaction(db.database) {
-        SchemaUtils.create(Users, Apps, Pages, PagesViews, PagesDaily, PasswordResets)
+        SchemaUtils.create(Users, Apps, Pages, PagesViews, PagesDaily, PasswordResets, ViewsDropped)
         // Add missing columns and indexes, but never drop anything automatically
-        MigrationUtils.statementsRequiredForDatabaseMigration(Users, Apps, Pages, PagesViews, PagesDaily, PasswordResets, withLogs = false)
+        MigrationUtils.statementsRequiredForDatabaseMigration(Users, Apps, Pages, PagesViews, PagesDaily, PasswordResets, ViewsDropped, withLogs = false)
             .filterNot { it.trimStart().startsWith("DROP", ignoreCase = true) || it.contains(" DROP ", ignoreCase = true) }
             .forEach { exec(it) }
     }

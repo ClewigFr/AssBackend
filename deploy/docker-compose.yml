@@ -49,6 +49,9 @@ services:
       MAX_APPS: ${MAX_APPS:-5}
       MAX_PAGES_PER_APP: ${MAX_PAGES_PER_APP:-30}
       MAX_MONTHLY_VIEWS: ${MAX_MONTHLY_VIEWS:-100000}
+      # Flood limits: views over them are dropped silently
+      VIEWS_PER_IP_APP_HOUR: ${VIEWS_PER_IP_APP_HOUR:-2000}
+      VIEWS_PER_SESSION: ${VIEWS_PER_SESSION:-500}
       # Password reset emails, with the same mailbox as the monitoring
       DASHBOARD_URL: ${DASHBOARD_URL:-https://ass.clewig.fr}
       SMTP_HOST: ${SMTP_HOST:-}

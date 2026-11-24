@@ -92,4 +92,27 @@ echo "$known" > "$STATE/errors.count"
 awk -v now="$now" '$1==now && $6==0 {print $2}' "$CONTAINERS" | while read -r name; do
   alert "down.$name" "$name est arrêté" "Le conteneur $name ne tourne plus. Sur le Pi : docker compose ps, puis docker compose logs $name."
 done
+
+# Every 10 minutes: views dropped by the backend's flood limits, and unusual spikes per application
+if [ $(( now / 60 % 10 )) -eq 0 ]; then
+  hour_ago=$(( (now - 3600) * 1000 ))
+  dropped=$(psql -tAF ' : ' -c "select a.name, sum(d.views) from viewsdropped d join apps a on a.id = d.app
+    where d.hour >= $hour_ago - 3600000 group by a.name having sum(d.views) >= ${ALERT_DROPPED_VIEWS:-100}" 2>/dev/null)
+  [ -n "$dropped" ] && alert flood "vues ignorées (flood ?)" "Le backend a ignoré des vues qui dépassaient ses limites anti-flood (trop de vues par IP ou par session) depuis une heure ou deux :
+
+$dropped
+
+Elles ne comptent pas dans les stats. Si ça continue, regardez la période dans le dashboard et supprimez-la au besoin (onglet Configuration > Supprimer des vues)."
+  spikes=$(psql -tAF ' : ' -c "select a.name, count(*) filter (where v.\"timestamp\" >= $hour_ago) as last_hour,
+      round(count(*) filter (where v.\"timestamp\" < $hour_ago) / 168.0) as usual
+    from pagesviews v join apps a on a.id = v.app
+    where v.\"timestamp\" >= $hour_ago - 7 * 86400000
+    group by a.name
+    having count(*) filter (where v.\"timestamp\" >= $hour_ago) >= greatest(${ALERT_SPIKE_MIN:-500}, 10 * count(*) filter (where v.\"timestamp\" < $hour_ago) / 168.0)" 2>/dev/null)
+  [ -n "$spikes" ] && alert spike "pic de vues inhabituel" "Une application reçoit beaucoup plus de vues que d'habitude (application : vues sur la dernière heure : moyenne par heure sur 7 jours) :
+
+$spikes
+
+Ça peut être un vrai succès, ou un envoi de fausses vues. Les vues d'une période se suppriment dans le dashboard (onglet Configuration > Supprimer des vues)."
+fi
 exit 0

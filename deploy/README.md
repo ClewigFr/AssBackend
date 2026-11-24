@@ -69,6 +69,7 @@ Fill in `.env`:
 - `SESSION_SIGN_KEY`: `openssl rand -hex 32`
 - `TUNNEL_TOKEN`: from step 3
 - the backup settings, see [Nightly backups](#5-nightly-backups) (you can do that later: until then the backup service only logs an error each night)
+- optionally the per-account quotas: `MAX_APPS` (default `5`), `MAX_PAGES_PER_APP` (`30`) and `MAX_MONTHLY_VIEWS` (`100000`, only an alert in the dashboard: views are still recorded). `0` removes a limit. See "Quotas" in the [main README](../README.md#quotas)
 - optionally `RETENTION_DAYS` (default `90`): raw page views, with their session ids, are kept that many days, then turned into views per page and per day. Stats of older periods still show views, but no sessions or durations. `0` keeps everything. See "Data retention" in the [main README](../README.md#data-retention)
 
 If the GitHub packages are private, log in once with a token that has `read:packages`: `docker login ghcr.io -u ClewigFr`. Or make both packages public in GitHub, under Packages > Package settings.
@@ -140,13 +141,15 @@ The `monitor` service measures the Pi every minute and emails you:
   - for the machine: average and peak (with the time) of CPU, load, RAM, swap and temperature, plus the Pi's throttling flags (undervoltage, reduced frequency) since boot;
   - for the storage: space used, **bytes written** to the SD card over the day with a projection over a year, and the storage errors the kernel reported. That's how SD card wear shows: a card gives no wear percentage like an SSD;
   - for each container: average and peak CPU and RAM, and restarts;
-  - for the service: views received, database size and the last successful backup;
+  - for the service: views received and the busiest hour, views dropped by the flood limits per application, database size and the last successful backup;
 - **an alert right away**, at most once every 6 hours per kind, when:
   - the disk is over 85 % full (`ALERT_DISK_PERCENT`);
   - the CPU is at 80 °C or more (`ALERT_TEMP`);
   - the Pi is being throttled;
   - the kernel reports a storage error;
-  - a container of the stack has stopped. You also get this alert when you stop one yourself, for example during a restore.
+  - a container of the stack has stopped;
+  - the backend dropped 100 views or more over its flood limits in the last hour or two (`ALERT_DROPPED_VIEWS`);
+  - an application receives at least 10 times its usual hourly views, and 500 or more (`ALERT_SPIKE_MIN`): a success, or fake views. These two are checked every 10 minutes. You also get this alert when you stop one yourself, for example during a restore.
 
 It writes a few hundred KB a day (in `DATA_DIR/monitor`, two days kept) and uses about 10 MB of RAM. It reads the host's counters read-only (`/sys/fs/cgroup`, `/var/lib/docker/containers`) and has no access to the Docker socket, so it can't control anything.
 

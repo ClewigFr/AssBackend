@@ -18,6 +18,8 @@ Everything is set through environment variables, which are read in `resources/ap
 | `VIEWS_RATE_LIMIT`  | no              | `600`              | Max `POST /views` per client IP per minute (`0` disables it) |
 | `VIEWS_PER_MINUTE`  | no              | `20000`            | Max page views accepted per client IP per minute, answered `429` beyond (`0` disables it; keep it above 1000, the largest batch) |
 | `AUTH_RATE_LIMIT`   | no              | `10`               | Max `POST /login`, `POST /register`, `POST /account/password`, `DELETE /account` and `POST /password/*` per client IP per minute (`0` disables it) |
+| `VIEWS_PER_IP_APP_HOUR` | no          | `2000`             | Flood limit: views per client IP and application per hour; more are dropped silently. See [Flood protection](#flood-protection) |
+| `VIEWS_PER_SESSION` | no              | `500`              | Flood limit: views per session id and day; more are dropped silently |
 | `STATS_CACHE_MS`    | no              | `5000`             | How long stats results are cached (`0` disables the cache) |
 | `RETENTION_DAYS`    | no              | `90`               | How long raw page views (with their session ids) are kept. Older ones become views per page and per day, see [Data retention](#data-retention). `0` keeps everything |
 | `MAX_APPS`          | no              | `5`                | Applications per account; creating more answers `403`. `0`: no limit, like the two below |
@@ -95,6 +97,14 @@ Raw page views, each with its random session id, are kept for `RETENTION_DAYS` (
 Every account has the same limits (`MAX_APPS`, `MAX_PAGES_PER_APP`, `MAX_MONTHLY_VIEWS`):
 - **5 applications, 30 pages per application:** hard limits. Creating one more answers `403` with a body starting with `quota:`. A CSV import that would go over is refused as a whole (names already in the application don't count). Existing applications and pages above a lowered limit are kept.
 - **100,000 views per month:** a soft limit. `POST /views` never refuses views because of it (the Android library would retry them forever); `GET /account` reports the month's views and the dashboard shows an alert once they reach the limit. The month is the calendar month in UTC, all the account's applications together.
+
+### Flood protection
+
+The application and page UUIDs are in the APK, so anyone can send fake views: an anonymous service can't tell a script from a phone. The backend limits what one source can add:
+- **per client IP and application:** `VIEWS_PER_IP_APP_HOUR` (2000) per hour. Mobile carriers put many users behind one IP, so it stays well above one person's use;
+- **per session:** `VIEWS_PER_SESSION` (500) per session id and day. A session is one app launch.
+
+Views over a limit are **dropped silently**, like invalid ones (`206`, or `400` when none is left), never `429`: the Android library would retry them forever, and a legitimate retry batch (up to 1000 views after an outage) must not get stuck. IPs and session ids are only counted in memory, never stored or logged. Dropped views are counted per application and hour in the `viewsdropped` table, which the monitoring reports and alerts on. After a flood that got through (many IPs), `DELETE /apps/{app}/views` removes the views of a period.
 
 ### Cookies across sites
 
@@ -174,6 +184,7 @@ See [Configuration](#configuration) for the variables that are required in produ
 | `POST`   | `/apps/{app}/pages/batch` | owner | Add several pages `{"names":[...]}` (up to 1000) → `200 {"created":[{"id","name"}],"existing":[...]}`. Names already in the application aren't created again, so the same list can be imported twice |
 | `DELETE` | `/apps/{app}/pages/{page}` | owner | Delete a page and its views → `204` |
 | `GET`    | `/apps/{app}/stats` | owner | Stats for a period, see below |
+| `DELETE` | `/apps/{app}/views?from=<ms>&to=<ms>` | owner | Delete the views received in `[from, to)`, and the daily counts of the days entirely inside it → `200 {"deleted"}`. To clean up after a flood |
 | `GET`    | `/account`    | login | `{"email","displayName","quotas":{"maxApps","maxPagesPerApp","maxMonthlyViews"},"usage":{"apps","monthViews","monthStart"}}`. `monthViews` counts every application of the account since `monthStart` (the 1st of the month, UTC); a quota of `0` means no limit |
 | `POST`   | `/account/password` | login | `{"current","new"}` → `204`, with a new session cookie: every other session (other devices) is signed out. `403` if `current` is wrong, `400` if `new` isn't 8 characters to 72 bytes |
 | `POST`   | `/password/forgot` | none | `{"email"}` → `204` whether or not the account exists. If it does, emails a reset link valid 1 hour, usable once (at most 3 pending per account) |

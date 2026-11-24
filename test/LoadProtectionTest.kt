@@ -97,7 +97,11 @@ class IngestionIntegrityTest {
      * the test engine's timing is too regular to trigger it.
      */
     @Test
-    fun noViewIsLostUnderConcurrentLoad() = withServer("ktor.performance.flush_interval_ms" to "1") {
+    fun noViewIsLostUnderConcurrentLoad() = withServer(
+        "ktor.performance.flush_interval_ms" to "1",
+        // 6000 views from one client: not what the flood limits are about here
+        "ktor.performance.views_per_ip_app_hour" to "0"
+    ) {
         val alice = registerAndLogin("alice@x.io")
         val (app, page) = appWithPage(alice)
         val body = """{"app":"$app","pageViews":[${(1..20).joinToString(",") { viewJson(page) }}]}"""

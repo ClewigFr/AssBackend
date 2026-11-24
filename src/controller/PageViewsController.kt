@@ -2,6 +2,7 @@ package com.ass.controller
 
 import com.ass.ingest.PageCache
 import com.ass.ingest.ViewBudget
+import com.ass.ingest.ViewGuard
 import com.ass.ingest.ViewIngestor
 import com.ass.ingest.ViewRow
 import io.ktor.http.HttpStatusCode
@@ -36,20 +37,21 @@ const val BUFFER_FULL_RETRY_AFTER_S = 10
  * POST /views {"app","pageViews":[{"page","sessionId","timestamp"}]}, timestamp = ms elapsed since the view.
  * When "app" is given, only pages of that application are accepted. Clients that don't send it
  * (older library versions) are still accepted for any existing page.
+ * Views over the flood limits (see ViewGuard) are silently dropped, like invalid ones.
  * 200: all views accepted, 206: some rejected, 400: none accepted, 429: rate limited (requests or views per minute),
  * 503: write buffer full, 415: unsupported Content-Encoding. 429 and 503 carry Retry-After.
  * The body may be gzipped (Content-Encoding: gzip); every response says so with Accept-Encoding.
  * The Android client retries on anything but 200/206/400.
  */
-fun Route.pageViews(pageCache: PageCache, ingestor: ViewIngestor, budget: ViewBudget, rateLimited: Boolean) {
+fun Route.pageViews(pageCache: PageCache, ingestor: ViewIngestor, budget: ViewBudget, guard: ViewGuard, rateLimited: Boolean) {
     if (rateLimited) {
-        rateLimit(VIEWS_RATE_LIMIT) { viewsRoute(pageCache, ingestor, budget) }
+        rateLimit(VIEWS_RATE_LIMIT) { viewsRoute(pageCache, ingestor, budget, guard) }
     } else {
-        viewsRoute(pageCache, ingestor, budget)
+        viewsRoute(pageCache, ingestor, budget, guard)
     }
 }
 
-private fun Route.viewsRoute(pageCache: PageCache, ingestor: ViewIngestor, budget: ViewBudget) {
+private fun Route.viewsRoute(pageCache: PageCache, ingestor: ViewIngestor, budget: ViewBudget, guard: ViewGuard) {
     post("/views") {
         // Tell clients they may gzip their next batches (RFC 7694)
         call.response.header(HttpHeaders.AcceptEncoding, "gzip")
@@ -64,7 +66,7 @@ private fun Route.viewsRoute(pageCache: PageCache, ingestor: ViewIngestor, budge
         }
         val now = System.currentTimeMillis()
         val appOfPage = pageCache.appsOf(hits.mapNotNull { it?.page }.toSet(), now)
-        val rows = hits.mapNotNull { hit ->
+        val valid = hits.mapNotNull { hit ->
             val page = hit?.page
             val session = hit?.sessionId
             val elapsed = hit?.timestamp
@@ -75,6 +77,8 @@ private fun Route.viewsRoute(pageCache: PageCache, ingestor: ViewIngestor, budge
                 ViewRow(page!!, pageApp, session, now - elapsed)
             } else null
         }
+        // Views over the flood limits are dropped like invalid ones: the client must not retry them
+        val rows = if (valid.isEmpty()) valid else guard.filter(call.request.origin.remoteHost, valid, now)
         val status = when {
             rows.isEmpty() -> HttpStatusCode.BadRequest
             !budget.take(call.request.origin.remoteHost, rows.size, now) -> {

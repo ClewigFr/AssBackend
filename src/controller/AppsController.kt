@@ -12,10 +12,12 @@ import com.ass.model.AppOut
 import com.ass.model.AppPagesOut
 import com.ass.model.AppsOut
 import com.ass.model.BatchPagesOut
+import com.ass.model.DeletedOut
 import com.ass.model.NameIn
 import com.ass.model.NamesIn
 import com.ass.model.PageOut
 import com.ass.model.User
+import com.ass.stats.DAY_MS
 import com.ass.stats.MAX_PERIOD_OFFSET
 import com.ass.stats.MAX_TZ_OFFSET_MS
 import com.ass.stats.Period
@@ -32,7 +34,11 @@ import io.ktor.server.routing.route
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.count
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.greaterEq
 import org.jetbrains.exposed.v1.core.inList
+import org.jetbrains.exposed.v1.core.less
+import org.jetbrains.exposed.v1.core.lessEq
+import org.jetbrains.exposed.v1.core.sum
 import org.jetbrains.exposed.v1.jdbc.batchInsert
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insertAndGetId
@@ -53,6 +59,7 @@ const val MAX_PAGES_PER_BATCH = 1000
  * POST   /apps/{app}/pages {"name"}     -> 201 {id,name}
  * POST   /apps/{app}/pages/batch {"names":[...]} -> 200 {"created":[{id,name}],"existing":[{id,name}]}
  * DELETE /apps/{app}/pages/{page}       -> 204 (its views too)
+ * DELETE /apps/{app}/views?from=<ms>&to=<ms> -> {"deleted":n}: views received in [from, to), e.g. after a flood
  * GET    /apps/{app}/stats?period=day|week|month|year&offset=0&tz=<minutes> -> stats of a period
  *
  * Another user's application answers 404, exactly like a missing one. Going over [Quotas]
@@ -110,6 +117,31 @@ fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService, quotas:
                 pageCache.removedApp(app.id)
                 statsService.invalidate(app.id)
                 call.respond(HttpStatusCode.NoContent)
+            }
+
+            // Clean up after a flood: raw views in [from, to), and daily counts of days entirely inside it
+            delete("/views") {
+                val user = requireUser(db) ?: return@delete
+                val app = ownedApp(db, user) ?: return@delete
+                val from = call.request.queryParameters["from"]?.toLongOrNull()
+                val to = call.request.queryParameters["to"]?.toLongOrNull()
+                if (from == null || to == null || from < 0 || to <= from) {
+                    return@delete call.respond(HttpStatusCode.BadRequest, "from and to (epoch ms, from < to) are required")
+                }
+                val deleted = db.query {
+                    val raw = PagesViews.deleteWhere {
+                        (PagesViews.app eq app.id) and (PagesViews.timestamp greaterEq from) and (PagesViews.timestamp less to)
+                    }
+                    val days = PagesDaily.select(PagesDaily.views.sum()).where {
+                        (PagesDaily.app eq app.id) and (PagesDaily.day greaterEq from) and (PagesDaily.day lessEq to - DAY_MS)
+                    }.single()[PagesDaily.views.sum()] ?: 0
+                    PagesDaily.deleteWhere {
+                        (PagesDaily.app eq app.id) and (PagesDaily.day greaterEq from) and (PagesDaily.day lessEq to - DAY_MS)
+                    }
+                    raw + days
+                }
+                statsService.invalidate(app.id)
+                call.respond(DeletedOut(deleted.toLong()))
             }
 
             get("/stats") {
