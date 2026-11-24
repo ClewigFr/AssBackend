@@ -26,6 +26,7 @@ Everything is set through environment variables, which are read in `resources/ap
 | `MAX_PAGES_PER_APP` | no              | `30`               | Pages per application; adding more (one page or a CSV import) answers `403` |
 | `MAX_MONTHLY_VIEWS` | no              | `100000`           | Views per account and calendar month (UTC). A **soft** limit: views keep being recorded, the dashboard shows an alert. See [Quotas](#quotas) |
 | `SMTP_HOST`         | no              |                    | SMTP server for the password reset emails, with `SMTP_PORT` (`465`), `SMTP_TLS` (`ssl`, `starttls` or `off`), `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM` (default `SMTP_USER`). Without it, emails are logged in dev and not sent in production |
+| `ACCOUNT_EMAILS`    | no              | `true`             | Emails to account owners: when the month's views reach 80 % and 100 % of the quota, and the monthly summary for those who opted in. Checked every hour, each sent once (`accountnotices` table) |
 | `DASHBOARD_URL`     | no              | first `CORS_ORIGINS` | Base of the links in the emails (`<DASHBOARD_URL>/#/reset?token=…`, `/#/verify?token=…`) |
 | `EMAIL_VERIFICATION` | no             | `true`             | New accounts can't sign in until they open the link emailed to them (valid 24 hours); unverified accounts are deleted after 24 hours. Needs `SMTP_HOST` |
 | `SIGNUP_MIN_SECONDS` | no             | `3`                | `POST /register` needs a `formToken` from `GET /register/form`; a sign-up sent sooner after it is treated as a bot (`0` disables the form token) |
@@ -190,8 +191,9 @@ See [Configuration](#configuration) for the variables that are required in produ
 | `POST`   | `/apps/{app}/pages` | owner | Add a page `{"name"}` → `201 {"id","name"}`. The id is what the app passes to `logScreen` |
 | `POST`   | `/apps/{app}/pages/batch` | owner | Add several pages `{"names":[...]}` (up to 1000) → `200 {"created":[{"id","name"}],"existing":[...]}`. Names already in the application aren't created again, so the same list can be imported twice |
 | `DELETE` | `/apps/{app}/pages/{page}` | owner | Delete a page and its views → `204` |
-| `GET`    | `/apps/{app}/stats` | owner | Stats for a period, see below |
+| `GET`    | `/apps/{app}/stats` | owner | Stats for a period, see below. `&page=<id>`: one page only (its views, and the sessions that saw it) |
 | `DELETE` | `/apps/{app}/views?from=<ms>&to=<ms>` | owner | Delete the views received in `[from, to)`, and the daily counts of the days entirely inside it → `200 {"deleted"}`. To clean up after a flood |
+| `PATCH`  | `/account`    | login | `{"monthlyReport": true\|false}` → `204`: opt in or out of the monthly summary email. `GET /account` returns it as `monthlyReport` |
 | `GET`    | `/limits`     | none  | The quotas of every account and the retention: `{"maxApps","maxPagesPerApp","maxMonthlyViews","retentionDays"}` (`0`: no limit, or everything kept). Shown on the dashboard's presentation page |
 | `GET`    | `/account`    | login | `{"email","displayName","quotas":{"maxApps","maxPagesPerApp","maxMonthlyViews"},"usage":{"apps","monthViews","monthStart"}}`. `monthViews` counts every application of the account since `monthStart` (the 1st of the month, UTC); a quota of `0` means no limit |
 | `POST`   | `/account/password` | login | `{"current","new"}` → `204`, with a new session cookie: every other session (other devices) is signed out. `403` if `current` is wrong, `400` if `new` isn't 8 characters to 72 bytes |
@@ -218,6 +220,7 @@ The response has:
 - `current` and `previous` (the period just before, of the same length): `views`, `sessions`, `pagesPerSession`, `avgSessionMs` (time between the first and last view of a session; a single-view session counts as 0), and `bounceRate` (share of sessions with a single view);
 - `buckets`: `start` (epoch ms), `views` and `sessions` per slot. A session is counted in the slot where it started, so slots add up exactly;
 - `detailFrom`: before this instant (epoch ms), only views per page and per day are kept, see [Data retention](#data-retention). Session figures only cover the part of the period after it. `null` when `RETENTION_DAYS=0`;
+- `previousBuckets`: the slots of the previous period, one per slot of `buckets`, to draw both on one chart;
 - `pages`: every page of the application with its `views` and the `sessions` that saw it, busiest first.
 
 There is no "users" figure: the library only knows a random session id per app launch, and nothing identifies a person or a device.

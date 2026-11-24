@@ -16,10 +16,12 @@ import com.ass.ingest.saveDropped
 import com.ass.ingest.ViewIngestor
 import com.ass.model.AssJson
 import com.ass.account.Quotas
+import com.ass.account.AccountMails
 import com.ass.account.account
 import com.ass.account.limits
 import com.ass.account.mailerFromConfig
 import com.ass.account.passwordReset
+import com.ass.dao.AccountNotices
 import com.ass.dao.PasswordResets
 import com.ass.dao.EmailVerifications
 import com.ass.signup.EmailVerification
@@ -77,6 +79,7 @@ import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.migration.jdbc.MigrationUtils
 import java.security.SecureRandom
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
@@ -100,6 +103,7 @@ fun Application.module() {
         capacity = configInt("ktor.performance.ingest_capacity", 500_000)
     )
     attributes.put(IngestorKey, ingestor)
+    attributes.put(DbKey, db)
 
     // Write buffered views before the database goes away
     monitor.subscribe(ApplicationStopping) { runBlocking { ingestor.close() } }
@@ -154,17 +158,27 @@ fun Application.module() {
         verification = verification
     )
     if (turnstileSecret != null && signup.captchaSiteKey == null) log.warn("TURNSTILE_SECRET is set without TURNSTILE_SITE_KEY: the dashboard can't show the widget")
+    val quotas = Quotas(
+        maxApps = configInt("ktor.quotas.max_apps", 5),
+        maxPagesPerApp = configInt("ktor.quotas.max_pages_per_app", 30),
+        maxMonthlyViews = configInt("ktor.quotas.max_monthly_views", 100_000).toLong()
+    )
+    // Quota alerts and monthly summaries by email, checked every hour
+    val accountMails = AccountMails(db, mailer, quotas, dashboardUrl)
+    attributes.put(AccountMailsKey, accountMails)
+    if (configBool("ktor.mail.account_emails", true)) launch {
+        delay(2.minutes)
+        while (true) {
+            try { accountMails.run() } catch (e: Exception) { log.error("Account emails failed", e) }
+            delay(1.hours)
+        }
+    }
     installModule()
     routing {
         root()
         health(db)
         pageViews(pageCache, ingestor, ViewBudget(configInt("ktor.performance.views_per_minute", 20_000)), guard, rateLimited = viewsRateLimit > 0,
             legacyViews = configBool("ktor.security.legacy_views", false))
-        val quotas = Quotas(
-            maxApps = configInt("ktor.quotas.max_apps", 5),
-            maxPagesPerApp = configInt("ktor.quotas.max_pages_per_app", 30),
-            maxMonthlyViews = configInt("ktor.quotas.max_monthly_views", 100_000).toLong()
-        )
         apps(db, pageCache, statsService, quotas)
         account(db, quotas, pageCache, statsService, rateLimited = authRateLimit > 0)
         limits(quotas, retention.days)
@@ -178,6 +192,8 @@ fun Application.module() {
 val RetentionKey = AttributeKey<Retention>("Retention")
 val GuardKey = AttributeKey<ViewGuard>("ViewGuard")
 val VerificationKey = AttributeKey<EmailVerification>("EmailVerification")
+val DbKey = AttributeKey<com.ass.db.Db>("Db")
+val AccountMailsKey = AttributeKey<com.ass.account.AccountMails>("AccountMails")
 val MailerKey = AttributeKey<com.ass.mail.Mailer>("Mailer")
 
 /** The ingestor of a running application (tests use it to wait for buffered writes). */
@@ -296,9 +312,9 @@ val Application.registrationOpen: Boolean
 // Database init: also adds columns introduced after the tables were first created
 fun databaseInitialization(db: Db) {
     transaction(db.database) {
-        SchemaUtils.create(Users, Apps, Pages, PagesViews, PagesDaily, PasswordResets, ViewsDropped, EmailVerifications)
+        SchemaUtils.create(Users, Apps, Pages, PagesViews, PagesDaily, PasswordResets, ViewsDropped, EmailVerifications, AccountNotices)
         // Add missing columns and indexes, but never drop anything automatically
-        MigrationUtils.statementsRequiredForDatabaseMigration(Users, Apps, Pages, PagesViews, PagesDaily, PasswordResets, ViewsDropped, EmailVerifications, withLogs = false)
+        MigrationUtils.statementsRequiredForDatabaseMigration(Users, Apps, Pages, PagesViews, PagesDaily, PasswordResets, ViewsDropped, EmailVerifications, AccountNotices, withLogs = false)
             .filterNot { it.trimStart().startsWith("DROP", ignoreCase = true) || it.contains(" DROP ", ignoreCase = true) }
             .forEach { exec(it) }
     }

@@ -9,6 +9,7 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.Json
 import java.util.UUID
+import org.jetbrains.exposed.v1.jdbc.selectAll
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -59,6 +60,22 @@ class FloodTest {
         assertEquals(2, guard.filter("1.2.3.4", rows, now = 7_200_500).size)
         assertEquals(mapOf((app to 7_200_000L) to 3L), guard.takeDropped())
         assertEquals(emptyMap(), guard.takeDropped())
+    }
+
+    @Test
+    fun savesTheDroppedViews() = withServer("ktor.performance.views_per_session" to "2") {
+        val alice = registerAndLogin("a@x.io")
+        val (app, page) = appWithPage(alice)
+        val session = UUID.randomUUID().toString()
+        repeat(2) {
+            call(HttpMethod.Post, "/views", json = """{"app":"$app","pageViews":[${views(page, 4, session)}]}""")
+            // Saved twice: the second time adds to the same row
+            com.ass.ingest.saveDropped(database(), guard())
+        }
+        val saved = database().query {
+            com.ass.dao.ViewsDropped.selectAll().single()[com.ass.dao.ViewsDropped.views]
+        }
+        assertEquals(6, saved)
     }
 
     @Test

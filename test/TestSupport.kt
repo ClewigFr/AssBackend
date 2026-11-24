@@ -113,3 +113,10 @@ fun ApplicationTestBuilder.sentMails() = (apps.getValue(this).attributes[MailerK
 
 /** The email verification of the running application (with email_verification on). */
 fun ApplicationTestBuilder.emailVerification() = apps.getValue(this).attributes[VerificationKey]
+
+/** The account emails job of the running application (tests run it directly). */
+fun ApplicationTestBuilder.accountMails() = apps.getValue(this).attributes[AccountMailsKey]
+
+/** The database and the flood guard of the running application. */
+fun ApplicationTestBuilder.database() = apps.getValue(this).attributes[DbKey]
+fun ApplicationTestBuilder.guard() = apps.getValue(this).attributes[GuardKey]

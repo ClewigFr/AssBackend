@@ -5,7 +5,7 @@ import com.ass.db.Db
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.plus
-import org.jetbrains.exposed.v1.jdbc.insertIgnore
+import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.update
 import org.slf4j.LoggerFactory
 
@@ -21,7 +21,8 @@ suspend fun saveDropped(db: Db, guard: ViewGuard) {
             val updated = ViewsDropped.update({ (ViewsDropped.app eq app) and (ViewsDropped.hour eq hour) }) {
                 it[views] = views + n
             }
-            if (updated == 0) ViewsDropped.insertIgnore {
+            // Only this job writes the table, once a minute: no concurrent insert of the same row
+            if (updated == 0) ViewsDropped.insert {
                 it[ViewsDropped.app] = app
                 it[ViewsDropped.hour] = hour
                 it[views] = n

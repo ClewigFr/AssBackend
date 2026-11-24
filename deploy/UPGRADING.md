@@ -113,6 +113,10 @@ The first backend version with flood limits creates the `viewsdropped` table on 
 
 The monitor's report gets an "Accounts" section, and an alert on sign-up bursts. Bring the deploy folder to the Pi (the monitor now receives `MAX_MONTHLY_VIEWS`), then `docker compose up -d --build monitor`.
 
+### Account emails
+
+The first backend version with account emails creates the `accountnotices` table and the `users.monthly_report` column on start. Every hour, it emails account owners whose month's views reach 80 % and 100 % of the quota, and on the 1st of the month the summary of the month before to those who opted in (Mon compte). It uses the `SMTP_*` settings; set `ACCOUNT_EMAILS=false` in `.env` to turn it off. Update the dashboard too.
+
 ## Rolling back
 
 1. Pin the previous version in `.env`:

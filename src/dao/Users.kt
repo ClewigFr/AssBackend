@@ -15,4 +15,6 @@ object Users : IntIdTable() {
     val emailVerified = bool("email_verified").default(true)
     /** Epoch ms; 0 for accounts created before it was recorded. Unverified accounts are purged after a day. */
     val createdAt = long("created_at").default(0)
+    /** Opted in to the monthly summary email (off by default). */
+    val monthlyReport = bool("monthly_report").default(false)
 }

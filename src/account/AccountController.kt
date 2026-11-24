@@ -17,6 +17,7 @@ import com.ass.dao.hashPassword
 import com.ass.db.Db
 import com.ass.ingest.PageCache
 import com.ass.model.AccountOut
+import com.ass.model.AccountSettingsIn
 import com.ass.model.PasswordChangeIn
 import com.ass.model.PasswordIn
 import com.ass.model.QuotasOut
@@ -29,6 +30,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
+import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.sessions.clear
@@ -45,7 +47,8 @@ import org.jetbrains.exposed.v1.jdbc.update
 /**
  * The logged-in user's account:
  *
- * GET    /account                             -> {email, displayName, quotas, usage}
+ * GET    /account                             -> {email, displayName, quotas, usage, monthlyReport}
+ * PATCH  /account          {monthlyReport}    -> 204: opt in or out of the monthly summary email
  * POST   /account/password {current, new}     -> 204; signs out every other session
  * DELETE /account          {password}         -> 204; deletes the applications, pages and views too
  *
@@ -64,7 +67,16 @@ fun Route.account(db: Db, quotas: Quotas, pageCache: PageCache, statsService: St
                 )
             }
             call.respond(AccountOut(user.email, user.displayName,
-                QuotasOut(quotas.maxApps, quotas.maxPagesPerApp, quotas.maxMonthlyViews), usage))
+                QuotasOut(quotas.maxApps, quotas.maxPagesPerApp, quotas.maxMonthlyViews), usage, user.monthlyReport))
+        }
+
+        // Settings of the account emails: {"monthlyReport": true|false}
+        patch {
+            val user = call.currentUser(db) ?: return@patch call.respond(HttpStatusCode.Unauthorized, "not logged")
+            val monthly = call.receiveNullable<AccountSettingsIn>()?.monthlyReport
+                ?: return@patch call.respond(HttpStatusCode.BadRequest, "monthlyReport is required")
+            db.query { Users.update({ Users.id eq user.id }) { it[monthlyReport] = monthly } }
+            call.respond(HttpStatusCode.NoContent)
         }
 
         // Each costs a bcrypt check, like /login

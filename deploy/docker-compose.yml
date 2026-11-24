@@ -59,6 +59,8 @@ services:
       # Flood limits: views over them are dropped silently
       VIEWS_PER_IP_APP_HOUR: ${VIEWS_PER_IP_APP_HOUR:-2000}
       VIEWS_PER_SESSION: ${VIEWS_PER_SESSION:-500}
+      # Account emails (quota alerts, monthly summaries)
+      ACCOUNT_EMAILS: ${ACCOUNT_EMAILS:-true}
       # Password reset emails, with the same mailbox as the monitoring
       DASHBOARD_URL: ${DASHBOARD_URL:-https://ass.clewig.fr}
       SMTP_HOST: ${SMTP_HOST:-}

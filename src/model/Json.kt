@@ -92,6 +92,8 @@ data class PeriodStats(
     val current: Summary,
     val previous: Summary,
     val buckets: List<Bucket>,
+    /** The slots of the previous period, one per slot of [buckets], to compare them on a chart. */
+    val previousBuckets: List<Bucket> = emptyList(),
     val pages: List<PageStat>,
     /** Before this instant only views per page and per day are kept (no sessions, hours or durations); null if everything is kept. */
     val detailFrom: Long? = null
@@ -112,7 +114,10 @@ data class QuotasOut(val maxApps: Int, val maxPagesPerApp: Int, val maxMonthlyVi
 data class UsageOut(val apps: Long, val monthViews: Long, val monthStart: Long)
 
 @Serializable
-data class AccountOut(val email: String, val displayName: String, val quotas: QuotasOut, val usage: UsageOut)
+data class AccountOut(val email: String, val displayName: String, val quotas: QuotasOut, val usage: UsageOut, val monthlyReport: Boolean = false)
+
+@Serializable
+data class AccountSettingsIn(val monthlyReport: Boolean? = null)
 
 @Serializable
 data class ForgotIn(val email: String? = null)

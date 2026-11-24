@@ -13,4 +13,5 @@ class User(id: EntityID<Int>) : IntEntity(id) {
     var sessionVersion by Users.sessionVersion
     var emailVerified by Users.emailVerified
     var createdAt by Users.createdAt
+    var monthlyReport by Users.monthlyReport
 }

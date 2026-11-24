@@ -60,7 +60,7 @@ const val MAX_PAGES_PER_BATCH = 1000
  * POST   /apps/{app}/pages/batch {"names":[...]} -> 200 {"created":[{id,name}],"existing":[{id,name}]}
  * DELETE /apps/{app}/pages/{page}       -> 204 (its views too)
  * DELETE /apps/{app}/views?from=<ms>&to=<ms> -> {"deleted":n}: views received in [from, to), e.g. after a flood
- * GET    /apps/{app}/stats?period=day|week|month|year&offset=0&tz=<minutes> -> stats of a period
+ * GET    /apps/{app}/stats?period=day|week|month|year&offset=0&tz=<minutes>[&page=<id>] -> stats of a period, of one page with page
  *
  * Another user's application answers 404, exactly like a missing one. Going over [Quotas]
  * (applications per account, pages per application) answers 403 and creates nothing.
@@ -154,7 +154,14 @@ fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService, quotas:
                 if (tzMs !in -MAX_TZ_OFFSET_MS..MAX_TZ_OFFSET_MS || period == null || offset !in -MAX_PERIOD_OFFSET..0) {
                     return@get call.respond(HttpStatusCode.BadRequest, "invalid tz, period (day|week|month|year) or offset (<= 0)")
                 }
-                call.respond(statsService.compute(app.id, period, offset, tzMs))
+                // ?page=<id>: one page of the application only
+                val page = query["page"]?.let { raw ->
+                    val id = raw.toUuidOrNull()
+                    val known = id != null && db.query { Pages.selectAll().where { (Pages.id eq id) and (Pages.app eq app.id) }.any() }
+                    if (!known) return@get call.respond(HttpStatusCode.NotFound, "page not found")
+                    id
+                }
+                call.respond(statsService.compute(app.id, period, offset, tzMs, page))
             }
 
             post("/pages") {
