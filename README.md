@@ -1,6 +1,6 @@
 # AssBackend — Anonymous Simple Stats API
 
-The Ktor 3 + Exposed 1.x server that receives anonymous page views from the [AssAndroid](../AssAndroid) library and serves them to the AssFrontEnd dashboard.
+The Ktor 3 + Exposed 1.x server that receives anonymous page views from the [AssAndroid](https://github.com/ClewigFr/AssAndroid) library and serves them to the [AssFrontEnd](https://github.com/ClewigFr/AssFrontEnd) dashboard.
 
 ## Configuration
 
@@ -246,3 +246,9 @@ Passwords are hashed with bcrypt. Accounts created before bcrypt still have the 
 
 - Scaleway: https://www.scaleway.com/fr/instances-virtuelles/development/
 - Ikoula: https://www.ikoula.com/fr/cloud-public
+
+## Contributing and license
+
+Contributions are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md). Report security issues privately, see [SECURITY.md](SECURITY.md).
+
+Released under the [MIT license](LICENSE). The project is part of Anonymous Simple Stats, with the [Android library](https://github.com/ClewigFr/AssAndroid) and the [dashboard](https://github.com/ClewigFr/AssFrontEnd).

@@ -43,7 +43,7 @@ services:
       KTOR_ENV: prod
       JDBC_DATABASE_URL: jdbc:postgresql://postgres:5432/ass?user=ass&password=${POSTGRES_PASSWORD}
       SESSION_SIGN_KEY: ${SESSION_SIGN_KEY:?set SESSION_SIGN_KEY in .env}
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://ass.clewig.fr}
+      CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS in .env}
       REGISTRATION_OPEN: ${REGISTRATION_OPEN:-false}
       # Sign-up bot protection (see the README)
       EMAIL_VERIFICATION: ${EMAIL_VERIFICATION:-true}
@@ -62,7 +62,7 @@ services:
       # Account emails (quota alerts, monthly summaries)
       ACCOUNT_EMAILS: ${ACCOUNT_EMAILS:-true}
       # Password reset emails, with the same mailbox as the monitoring
-      DASHBOARD_URL: ${DASHBOARD_URL:-https://ass.clewig.fr}
+      DASHBOARD_URL: ${DASHBOARD_URL:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-465}
       SMTP_TLS: ${SMTP_TLS:-ssl}

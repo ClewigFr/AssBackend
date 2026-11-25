@@ -1,19 +1,19 @@
 # Hosting on a Raspberry Pi 5
 
-The whole service on one Raspberry Pi (or any arm64/amd64 Linux box) with Docker Compose:
+The whole service on one Raspberry Pi (or any arm64/amd64 Linux box) with Docker Compose. Replace `example.com` with your own domain everywhere below.
 
 | Service | What it does | Public address |
 |---|---|---|
 | `postgres` | PostgreSQL 18, the data | none |
-| `backend` | the API (image `ghcr.io/clewigfr/assbackend`) | `https://ass-api.clewig.fr` |
-| `dashboard` | the dashboard, served by nginx (image `ghcr.io/clewigfr/assfrontend`) | `https://ass.clewig.fr` |
+| `backend` | the API (image `ghcr.io/clewigfr/assbackend`) | `https://ass-api.example.com` |
+| `dashboard` | the dashboard, served by nginx (image `ghcr.io/clewigfr/assfrontend`) | `https://ass.example.com` |
 | `cloudflared` | Cloudflare Tunnel: HTTPS, no port opened on the router, home IP hidden | |
 | `backup` | nightly encrypted dump to Backblaze B2 | |
 | `monitor` | resource and storage monitoring, daily report and alerts by email | |
 
 The images are built by the CI of each repository on every push to `master` and published to GitHub Packages.
 
-The Android library is configured with `AssConfig(endpoint = "https://ass-api.clewig.fr", appId = …)`.
+The Android library is configured with `AssConfig(endpoint = "https://ass-api.example.com", appId = …)`.
 
 ## 1. Prepare the Pi
 
@@ -35,11 +35,11 @@ The Android library is configured with `AssConfig(endpoint = "https://ass-api.cl
    - Logs in RAM: in `/etc/systemd/journald.conf`, set `Storage=volatile` and `RuntimeMaxUse=50M`, then `sudo systemctl restart systemd-journald`.
    - Swap: recent Raspberry Pi OS swaps to compressed RAM (zram) already. Check with `swapon --show`: you should see `/dev/zram0` and no `/var/swap` file.
 
-## 2. Put clewig.fr on Cloudflare (once)
+## 2. Put your domain on Cloudflare (once)
 
-1. Create a free account on https://dash.cloudflare.com and **add the domain `clewig.fr`** (Free plan).
+1. Create a free account on https://dash.cloudflare.com and **add the domain `example.com`** (Free plan).
 2. Cloudflare imports the existing DNS records. **Check that all of them are there** (website, `MX` mail records, `TXT`) before going further.
-3. At the registrar of `clewig.fr`, replace the name servers with the two Cloudflare gives you. It takes from a few minutes to a few hours; Cloudflare emails you when the domain is active.
+3. At the registrar of `example.com`, replace the name servers with the two Cloudflare gives you. It takes from a few minutes to a few hours; Cloudflare emails you when the domain is active.
 
 ## 3. Create the tunnel
 
@@ -49,12 +49,12 @@ The Android library is configured with `AssConfig(endpoint = "https://ass-api.cl
 
    | Subdomain | Domain | Service |
    |---|---|---|
-   | `ass` | `clewig.fr` | `http://dashboard:80` |
-   | `ass-api` | `clewig.fr` | `http://backend:8080` |
+   | `ass` | `example.com` | `http://dashboard:80` |
+   | `ass-api` | `example.com` | `http://backend:8080` |
 
    Use `http://` (Cloudflare provides HTTPS, and the tunnel is already encrypted) and the service names, not `localhost`: `cloudflared` reaches them over the Compose network. If your interface has a separate Type field, choose `HTTP` and enter `dashboard:80` / `backend:8080`.
 
-   Cloudflare creates the DNS records and the HTTPS certificates. `ass-api` rather than `api.ass` because the free certificate covers `*.clewig.fr` only, not `*.ass.clewig.fr`.
+   Cloudflare creates the DNS records and the HTTPS certificates. `ass-api` rather than `api.ass` because the free certificate covers `*.example.com` only, not `*.ass.example.com`.
 
 ## 4. Start the stack
 
@@ -80,12 +80,12 @@ docker compose ps        # everything "healthy" after about a minute
 curl http://127.0.0.1:8099/health   # OK
 ```
 
-Then open https://ass.clewig.fr.
+Then open https://ass.example.com.
 
 **Create your account:** set `REGISTRATION_OPEN=true` in `.env`, run `docker compose up -d backend`, and use "Créer un compte" on the dashboard's login page, then open the link emailed to you (SMTP must be set up, see section 6; without it, set `EMAIL_VERIFICATION=false`). Set `REGISTRATION_OPEN` back to `false` if strangers shouldn't sign up, and run `docker compose up -d backend` again.
 
 **Bots on the sign-up form:** a honeypot, a form token, an hourly cap (`MAX_SIGNUPS_PER_HOUR`) and email verification are on by default. For a CAPTCHA, create a Turnstile widget for the dashboard's hostname in the Cloudflare dashboard (Turnstile → Add widget, "Managed") and set `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET` in `.env`.
-- The widget's hostname is the **dashboard's** (`ass.clewig.fr`), not the API's: the widget runs on the dashboard page, only the secret is used by the backend.
+- The widget's hostname is the **dashboard's** (`ass.example.com`), not the API's: the widget runs on the dashboard page, only the secret is used by the backend.
 - If Cloudflare can't be reached to check a token, the sign-up is refused (fails closed); the person can retry.
 - To try it locally, use Cloudflare's test keys, which always pass: site key `1x00000000000000000000AA`, secret `1x0000000000000000000000000000000AA` (`2x0000000000000000000000000000000AA` always fails).
 
@@ -109,7 +109,7 @@ Setup, once:
    - The `public key: age1…` line goes in `.env` as `AGE_RECIPIENT`.
    - The whole output (with `AGE-SECRET-KEY-…`) is the **private key**. Store it in your password manager, and **not only on the Pi**: without it the backups can't be read, and if the Pi dies it dies with them.
 2. **Backblaze B2.** Create an account on https://www.backblaze.com/cloud-storage, then:
-   - **Buckets > Create a Bucket**, private, for example `ass-backup-clewig` (names are global), into `B2_BUCKET`;
+   - **Buckets > Create a Bucket**, private, for example `ass-backup-yourname` (names are global), into `B2_BUCKET`;
    - **Application Keys > Add a New Application Key**, with access to this bucket only, read and write: `keyID` into `B2_KEY_ID`, `applicationKey` into `B2_APP_KEY`.
 3. **Alerts (optional).** On https://healthchecks.io, create a free check with a 1 day period and a few hours of grace, and put its ping URL in `HEALTHCHECK_URL`.
 4. Apply and run a first backup now:
@@ -161,7 +161,7 @@ Setup, with an OVH mailbox (Web Cloud > Emails, or the one that comes with your 
    ```
    SMTP_HOST=ssl0.ovh.net
    SMTP_PORT=465
-   SMTP_USER=monitoring@clewig.fr      # the full address of the mailbox
+   SMTP_USER=monitoring@example.com      # the full address of the mailbox
    SMTP_PASSWORD=…                     # that mailbox's password
    MAIL_TO=you@example.com             # where reports go (can be the same address)
    ```
@@ -177,7 +177,7 @@ Setup, with an OVH mailbox (Web Cloud > Emails, or the one that comes with your 
    ```
 4. Optional: so you know when the monitoring itself is down, create another check on healthchecks.io with a 1 day period and a few hours of grace, and put its ping URL in `MONITOR_HEALTHCHECK_URL`. It's pinged after each report sent.
 
-The backend uses the same mailbox for the **password reset** emails ("Mot de passe oublié ?" on the login page). Their links point to `DASHBOARD_URL` (default `https://ass.clewig.fr`).
+The backend uses the same mailbox for the **password reset** emails ("Mot de passe oublié ?" on the login page). Their links point to `DASHBOARD_URL` (default `https://ass.example.com`).
 
 If a test mail fails, `docker compose logs monitor` shows the SMTP server's answer. With port 587, set `SMTP_TLS=starttls`.
 

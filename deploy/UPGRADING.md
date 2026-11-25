@@ -32,7 +32,7 @@ docker compose pull dashboard
 docker compose up -d dashboard
 ```
 
-Reload https://ass.clewig.fr. Browsers pick up the new version at once (`index.html` is never cached).
+Reload https://ass.example.com. Browsers pick up the new version at once (`index.html` is never cached).
 
 ## Backend only
 
