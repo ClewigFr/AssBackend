@@ -118,7 +118,7 @@ class PostgresTest {
 
         assertEquals("bigint", query(url, "SELECT data_type FROM information_schema.columns WHERE table_name = 'pagesviews' AND column_name = 'id'") { it.next(); it.getString(1) })
         assertEquals("bigint", query(url, "SELECT data_type FROM information_schema.sequences WHERE sequence_name = 'pagesviews_id_seq'") { it.next(); it.getString(1) })
-        assertEquals(listOf("accountnotices", "apps", "emailverifications", "pages", "pagesdaily", "pagesviews", "passwordresets", "users", "viewsdropped"),
+        assertEquals(listOf("accountnotices", "app_members", "apps", "emailverifications", "pages", "pagesdaily", "pagesviews", "passwordresets", "users", "viewsdropped"),
             query(url, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY 1") { rs ->
                 generateSequence { if (rs.next()) rs.getString(1) else null }.toList()
             })

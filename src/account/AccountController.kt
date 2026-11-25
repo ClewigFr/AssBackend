@@ -6,6 +6,7 @@ import com.ass.auth.startSession
 import com.ass.controller.BCRYPT_MAX_BYTES
 import com.ass.controller.MIN_PASSWORD_LENGTH
 import com.ass.controller.limitedTo
+import com.ass.dao.AppMembers
 import com.ass.dao.Apps
 import com.ass.dao.Pages
 import com.ass.dao.PagesDaily
@@ -112,6 +113,9 @@ fun Route.account(db: Db, quotas: Quotas, pageCache: PageCache, statsService: St
                 }
                 val apps = db.query {
                     val ids = Apps.select(Apps.id).where { Apps.owner eq user.id }.map { it[Apps.id] }
+                    // Shares of the account, both ways (also cascaded by the foreign keys)
+                    AppMembers.deleteWhere { AppMembers.user eq user.id }
+                    if (ids.isNotEmpty()) AppMembers.deleteWhere { AppMembers.app inList ids }
                     if (ids.isNotEmpty()) {
                         PagesViews.deleteWhere { PagesViews.app inList ids }
                         PagesDaily.deleteWhere { PagesDaily.app inList ids }

@@ -184,24 +184,29 @@ See [Configuration](#configuration) for the variables that are required in produ
 | Method   | Path          | Auth  | Description |
 |----------|---------------|-------|-------------|
 | `POST`   | `/views`      | none  | Ingest page views: `{"app","pageViews":[{"page","sessionId","timestamp"}]}`, where `timestamp` is ms elapsed since the view. Returns `200` if all were accepted, `206` if some were rejected, `400` if none were, `429` if rate limited, `503` if the write buffer is full. |
-| `GET`    | `/apps`       | login | Your applications: `{"apps":[{"id","name","pages"}]}` |
+| `GET`    | `/apps`       | login | Your applications and the ones shared with you: `{"apps":[{"id","name","pages","role"}]}`, `role` being `owner`, `manage` or `read`; shared ones also have `owner` (the owner's email) |
 | `POST`   | `/apps`       | login | Create an application `{"name"}` → `201 {"id","name"}`. The id is the UUID to configure the Android library with |
-| `GET`    | `/apps/{app}` | owner | The application and its pages: `{"app":{...},"pages":[{"id","name"}]}` |
+| `GET`    | `/apps/{app}` | read | The application and its pages: `{"app":{...},"pages":[{"id","name"}]}` |
 | `DELETE` | `/apps/{app}` | owner | Delete the application, its pages and their views → `204` |
-| `POST`   | `/apps/{app}/pages` | owner | Add a page `{"name"}` → `201 {"id","name"}`. The id is what the app passes to `logScreen` |
-| `POST`   | `/apps/{app}/pages/batch` | owner | Add several pages `{"names":[...]}` (up to 1000) → `200 {"created":[{"id","name"}],"existing":[...]}`. Names already in the application aren't created again, so the same list can be imported twice |
-| `DELETE` | `/apps/{app}/pages/{page}` | owner | Delete a page and its views → `204` |
-| `GET`    | `/apps/{app}/stats` | owner | Stats for a period, see below. `&page=<id>`: one page only (its views, and the sessions that saw it) |
-| `DELETE` | `/apps/{app}/views?from=<ms>&to=<ms>` | owner | Delete the views received in `[from, to)`, and the daily counts of the days entirely inside it → `200 {"deleted"}`. To clean up after a flood |
+| `POST`   | `/apps/{app}/pages` | manage | Add a page `{"name"}` → `201 {"id","name"}`. The id is what the app passes to `logScreen` |
+| `POST`   | `/apps/{app}/pages/batch` | manage | Add several pages `{"names":[...]}` (up to 1000) → `200 {"created":[{"id","name"}],"existing":[...]}`. Names already in the application aren't created again, so the same list can be imported twice |
+| `DELETE` | `/apps/{app}/pages/{page}` | manage | Delete a page and its views → `204` |
+| `GET`    | `/apps/{app}/stats` | read | Stats for a period, see below. `&page=<id>`: one page only (its views, and the sessions that saw it) |
+| `DELETE` | `/apps/{app}/views?from=<ms>&to=<ms>` | manage | Delete the views received in `[from, to)`, and the daily counts of the days entirely inside it → `200 {"deleted"}`. To clean up after a flood |
+| `GET`    | `/apps/{app}/members` | owner | The accounts the application is shared with: `{"members":[{"userId","email","role"}]}` |
+| `POST`   | `/apps/{app}/members` | owner | Share with an existing account `{"email","role":"read"\|"manage"}`, or change its role → `200 {"members":[...]}`. `404` if no account has this email (no invitation is sent), `409` for the owner's own email |
+| `DELETE` | `/apps/{app}/members/{userId}` | owner | Stop sharing → `204`. A member can also remove themself (leave the application), also as `/apps/{app}/members/me` |
 | `PATCH`  | `/account`    | login | `{"monthlyReport": true\|false}` → `204`: opt in or out of the monthly summary email. `GET /account` returns it as `monthlyReport` |
 | `GET`    | `/limits`     | none  | The quotas of every account and the retention: `{"maxApps","maxPagesPerApp","maxMonthlyViews","retentionDays"}` (`0`: no limit, or everything kept). Shown on the dashboard's presentation page |
 | `GET`    | `/account`    | login | `{"email","displayName","quotas":{"maxApps","maxPagesPerApp","maxMonthlyViews"},"usage":{"apps","monthViews","monthStart"}}`. `monthViews` counts every application of the account since `monthStart` (the 1st of the month, UTC); a quota of `0` means no limit |
 | `POST`   | `/account/password` | login | `{"current","new"}` → `204`, with a new session cookie: every other session (other devices) is signed out. `403` if `current` is wrong, `400` if `new` isn't 8 characters to 72 bytes |
 | `POST`   | `/password/forgot` | none | `{"email"}` → `204` whether or not the account exists. If it does, emails a reset link valid 1 hour, usable once (at most 3 pending per account) |
 | `POST`   | `/password/reset` | none | `{"token","new"}` → `204`: sets the password, signs out every session and cancels the other links. `400` if the link is unknown, used or expired, or the password isn't 8 characters to 72 bytes |
-| `DELETE` | `/account`    | login | `{"password"}` → `204`: deletes the account, its applications, pages and views, and ends the session. `403` if the password is wrong |
+| `DELETE` | `/account`    | login | `{"password"}` → `204`: deletes the account, its applications, pages and views, its shares, and ends the session. `403` if the password is wrong |
 
-Another user's application answers `404`, exactly like one that doesn't exist. Going over a [quota](#quotas) answers `403`.
+An application can be shared with other accounts. `read` sees the pages and stats; `manage` also adds and deletes pages and deletes views; deleting the application and sharing it stay with the owner. Shares disappear with the application or either account. Quotas keep counting the owner's applications only: a shared application never counts for its members, and pages a manager adds count for the owner.
+
+An application you have no access to answers `404`, exactly like one that doesn't exist; one where your role is too low answers `403`. Going over a [quota](#quotas) answers `403`.
 
 ### Stats
 

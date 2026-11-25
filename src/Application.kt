@@ -1,6 +1,7 @@
 package com.ass
 
 import com.ass.controller.*
+import com.ass.dao.AppMembers
 import com.ass.dao.Apps
 import com.ass.dao.Pages
 import com.ass.dao.PagesDaily
@@ -312,9 +313,9 @@ val Application.registrationOpen: Boolean
 // Database init: also adds columns introduced after the tables were first created
 fun databaseInitialization(db: Db) {
     transaction(db.database) {
-        SchemaUtils.create(Users, Apps, Pages, PagesViews, PagesDaily, PasswordResets, ViewsDropped, EmailVerifications, AccountNotices)
+        SchemaUtils.create(Users, Apps, Pages, PagesViews, PagesDaily, PasswordResets, ViewsDropped, EmailVerifications, AccountNotices, AppMembers)
         // Add missing columns and indexes, but never drop anything automatically
-        MigrationUtils.statementsRequiredForDatabaseMigration(Users, Apps, Pages, PagesViews, PagesDaily, PasswordResets, ViewsDropped, EmailVerifications, AccountNotices, withLogs = false)
+        MigrationUtils.statementsRequiredForDatabaseMigration(Users, Apps, Pages, PagesViews, PagesDaily, PasswordResets, ViewsDropped, EmailVerifications, AccountNotices, AppMembers, withLogs = false)
             .filterNot { it.trimStart().startsWith("DROP", ignoreCase = true) || it.contains(" DROP ", ignoreCase = true) }
             .forEach { exec(it) }
     }

@@ -2,6 +2,8 @@ package com.ass.model
 
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
@@ -46,8 +48,26 @@ data class NamesIn(val names: List<String>? = null)
 @Serializable
 data class BatchPagesOut(val created: List<PageOut>, val existing: List<PageOut>)
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
-data class AppOut(val id: JsonUUID, val name: String, val pages: Long = 0)
+data class AppOut(
+    val id: JsonUUID,
+    val name: String,
+    val pages: Long = 0,
+    /** The caller's role: "owner", "manage" or "read". */
+    @EncodeDefault val role: String = "owner",
+    /** Email of the owner, only on applications shared with the caller. */
+    val owner: String? = null,
+)
+
+@Serializable
+data class MemberIn(val email: String? = null, val role: String? = null)
+
+@Serializable
+data class MemberOut(val userId: Int, val email: String, val role: String)
+
+@Serializable
+data class MembersOut(val members: List<MemberOut>)
 
 @Serializable
 data class AppsOut(val apps: List<AppOut>)
