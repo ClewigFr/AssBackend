@@ -84,6 +84,8 @@ Then open https://ass.example.com.
 
 **Create your account:** set `REGISTRATION_OPEN=true` in `.env`, run `docker compose up -d backend`, and use "Créer un compte" on the dashboard's login page, then open the link emailed to you (SMTP must be set up, see section 6; without it, set `EMAIL_VERIFICATION=false`). Set `REGISTRATION_OPEN` back to `false` if strangers shouldn't sign up, and run `docker compose up -d backend` again.
 
+**Legal pages** (legal notice, privacy policy, terms; required for an instance open to the public in France or the EU): they name you, so they aren't in the dashboard image. Copy the dashboard repository's `legal.example/` next to `docker-compose.yml` as `legal/`, fill it in (see "Legal pages" in its README), then run `docker compose up -d dashboard`. The folder is mounted read-only at `/usr/share/nginx/html/legal`; edits show at once, no restart needed. Without it the dashboard hides the legal links.
+
 **Bots on the sign-up form:** a honeypot, a form token, an hourly cap (`MAX_SIGNUPS_PER_HOUR`) and email verification are on by default. For a CAPTCHA, create a Turnstile widget for the dashboard's hostname in the Cloudflare dashboard (Turnstile → Add widget, "Managed") and set `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET` in `.env`.
 - The widget's hostname is the **dashboard's** (`ass.example.com`), not the API's: the widget runs on the dashboard page, only the secret is used by the backend.
 - If Cloudflare can't be reached to check a token, the sign-up is refused (fails closed); the person can retry.

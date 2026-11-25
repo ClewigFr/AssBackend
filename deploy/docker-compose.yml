@@ -78,6 +78,10 @@ services:
     image: ${DASHBOARD_IMAGE:-ghcr.io/clewigfr/assfrontend:latest}
     restart: unless-stopped
     ports: ["127.0.0.1:${DASHBOARD_LOCAL_PORT:-8098}:80"]
+    # This instance's legal pages (not in the image, they name the operator): copy the dashboard's
+    # legal.example/ to ./legal and fill it in. Without it the dashboard hides the legal links.
+    volumes:
+      - ./legal:/usr/share/nginx/html/legal:ro
     mem_limit: 64m
     logging: *logging
 
