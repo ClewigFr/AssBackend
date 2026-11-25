@@ -89,10 +89,10 @@ class SignupProtectionTest {
         // Can't sign in yet; the right password sends the link again
         assertEquals(HttpStatusCode.Forbidden, postForm("/login", "userId" to "a@x.io", "password" to "secret123").status)
         val again = mailToken(2)
-        assertEquals(HttpStatusCode.BadRequest, call(HttpMethod.Post, "/register/verify", json = """{"token":"$token"}""").status)
-
         val verified = call(HttpMethod.Post, "/register/verify", json = """{"token":"$again"}""")
         assertEquals(HttpStatusCode.OK, verified.status)
+        // Opening one link cancels the other pending ones
+        assertEquals(HttpStatusCode.BadRequest, call(HttpMethod.Post, "/register/verify", json = """{"token":"$token"}""").status)
         assertEquals(HttpStatusCode.OK, call(HttpMethod.Get, "/account", sessionCookie(verified)).status)
         assertEquals(HttpStatusCode.OK, postForm("/login", "userId" to "a@x.io", "password" to "secret123").status)
     }
@@ -103,6 +103,19 @@ class SignupProtectionTest {
         val dup = postForm("/register", "email" to "A@x.io", "password" to "other1234")
         assertEquals(HttpStatusCode.Created, dup.status)
         assertEquals("Check your email", dup.bodyAsText())
+    }
+
+    @Test
+    fun signupBeforeTheOwnerCantKeepItsPassword() = withServer("ktor.security.email_verification" to "true") {
+        // Someone registers the address first with their own password, then its owner signs up
+        postForm("/register", "email" to "a@x.io", "password" to "attacker1")
+        mailToken()
+        assertEquals(HttpStatusCode.Created, postForm("/register", "email" to "a@x.io", "password" to "owner1234").status)
+        val ownerLink = mailToken(2)
+
+        assertEquals(HttpStatusCode.OK, call(HttpMethod.Post, "/register/verify", json = """{"token":"$ownerLink"}""").status)
+        assertEquals(HttpStatusCode.Unauthorized, postForm("/login", "userId" to "a@x.io", "password" to "attacker1").status)
+        assertEquals(HttpStatusCode.OK, postForm("/login", "userId" to "a@x.io", "password" to "owner1234").status)
     }
 
     @Test

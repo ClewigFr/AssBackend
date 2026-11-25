@@ -40,6 +40,7 @@ class ViewIngestor(
     private val log = LoggerFactory.getLogger(ViewIngestor::class.java)
     private val channel = Channel<ViewRow>(Channel.UNLIMITED)
     private val pending = AtomicInteger(0)
+    @Volatile private var closing = false
     private val job: Job = scope.launch { run() }
 
     /** Number of views accepted but not yet written. */
@@ -90,21 +91,43 @@ class ViewIngestor(
         }
     }
 
+    private companion object {
+        const val MIN_RETRY_MS = 1_000L
+        const val MAX_RETRY_MS = 30_000L
+    }
+
+    /**
+     * Writes [rows], retrying with a backoff while the database fails: the clients were told the
+     * views are accepted and won't send them again. Meanwhile the rows stay counted in [pending],
+     * so a long outage fills the buffer and /views answers 503 (clients retry later) instead of
+     * views being lost. Only on shutdown are they given up.
+     */
     private suspend fun write(rows: List<ViewRow>) {
-        try {
-            insert(rows)
-        } catch (e: Exception) {
-            // Most likely a page deleted while its views were buffered: keep the rows whose page still exists
+        var backoffMs = MIN_RETRY_MS
+        while (true) {
             try {
-                val existing = db.query {
-                    Pages.select(Pages.id).where { Pages.id inList rows.map { it.page }.distinct() }
-                        .map { it[Pages.id].value }.toSet()
+                insert(rows)
+                return
+            } catch (e: Exception) {
+                // Most likely a page deleted while its views were buffered: keep the rows whose page still exists
+                try {
+                    val existing = db.query {
+                        Pages.select(Pages.id).where { Pages.id inList rows.map { it.page }.distinct() }
+                            .map { it[Pages.id].value }.toSet()
+                    }
+                    val kept = rows.filter { it.page in existing }
+                    if (kept.isNotEmpty()) insert(kept)
+                    if (kept.size < rows.size) log.info("Dropped ${rows.size - kept.size} views for deleted pages")
+                    return
+                } catch (e2: Exception) {
+                    if (closing) {
+                        log.error("Failed to write ${rows.size} page views on shutdown, they are lost", e2)
+                        return
+                    }
+                    log.warn("Failed to write ${rows.size} page views, retrying in ${backoffMs / 1000} s: {}", e2.toString())
+                    delay(backoffMs)
+                    backoffMs = (backoffMs * 2).coerceAtMost(MAX_RETRY_MS)
                 }
-                val kept = rows.filter { it.page in existing }
-                if (kept.isNotEmpty()) insert(kept)
-                if (kept.size < rows.size) log.info("Dropped ${rows.size - kept.size} views for deleted pages")
-            } catch (e2: Exception) {
-                log.error("Failed to write ${rows.size} page views", e2)
             }
         }
     }
@@ -125,6 +148,7 @@ class ViewIngestor(
 
     /** Stop accepting views and write what's buffered. */
     suspend fun close() {
+        closing = true
         channel.close()
         job.join()
     }

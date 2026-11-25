@@ -12,12 +12,15 @@ import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greater
 import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.core.lessEq
+import org.jetbrains.exposed.v1.core.plus
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.update
 
 const val VERIFY_TOKEN_TTL_MS = 24L * 60 * 60 * 1000
+/** Verification links that can be pending at once for one account (older ones are dropped). */
+const val MAX_PENDING_VERIFICATIONS = 3
 
 /**
  * New accounts can't sign in until the link emailed to them is opened; unverified accounts are
@@ -25,16 +28,26 @@ const val VERIFY_TOKEN_TTL_MS = 24L * 60 * 60 * 1000
  */
 class EmailVerification(private val db: Db, private val mailer: Mailer, private val dashboardUrl: String) {
 
-    /** Emails a new link to [user], replacing any pending one. */
-    suspend fun sendLink(user: User, now: Long = System.currentTimeMillis()) {
+    /**
+     * Emails a new link to [user]. With [passwordHash] (a sign-up over an unverified account),
+     * opening this link sets that password: whoever registered an address first can't keep their
+     * password once the owner of the address confirms it. Other pending links stay valid (each
+     * applies its own sign-up's password), at most [MAX_PENDING_VERIFICATIONS].
+     */
+    suspend fun sendLink(user: User, passwordHash: String? = null, now: Long = System.currentTimeMillis()) {
         val token = newToken()
         val userId = user.id
         db.query {
-            EmailVerifications.deleteWhere { EmailVerifications.user eq userId }
+            EmailVerifications.deleteWhere { expiresAt lessEq now }
+            EmailVerifications.select(EmailVerifications.tokenHash).where { EmailVerifications.user eq userId }
+                .orderBy(EmailVerifications.expiresAt).map { it[EmailVerifications.tokenHash] }
+                .dropLast(MAX_PENDING_VERIFICATIONS - 1)
+                .forEach { old -> EmailVerifications.deleteWhere { tokenHash eq old } }
             EmailVerifications.insert {
                 it[tokenHash] = sha256(token)
                 it[this.user] = userId
                 it[expiresAt] = now + VERIFY_TOKEN_TTL_MS
+                it[this.passwordHash] = passwordHash
             }
         }
         mailer.send(user.email, "Confirmez votre adresse Anonymous Simple Stats", verifyEmail("$dashboardUrl/#/verify?token=$token"))
@@ -44,10 +57,19 @@ class EmailVerification(private val db: Db, private val mailer: Mailer, private 
     suspend fun verify(token: String, now: Long = System.currentTimeMillis()): Int? {
         if (token.length !in 20..100) return null
         return db.query {
-            val user = EmailVerifications.select(EmailVerifications.user)
+            val row = EmailVerifications.select(EmailVerifications.user, EmailVerifications.passwordHash)
                 .where { (EmailVerifications.tokenHash eq sha256(token)) and (EmailVerifications.expiresAt greater now) }
-                .firstOrNull()?.get(EmailVerifications.user) ?: return@query null
-            Users.update({ Users.id eq user }) { it[emailVerified] = true }
+                .firstOrNull() ?: return@query null
+            val user = row[EmailVerifications.user]
+            val hash = row[EmailVerifications.passwordHash]
+            Users.update({ Users.id eq user }) {
+                it[emailVerified] = true
+                // The password of the sign-up this link came from; other sessions are signed out
+                if (hash != null) {
+                    it[Users.passwordHash] = hash
+                    it[sessionVersion] = sessionVersion + 1
+                }
+            }
             EmailVerifications.deleteWhere { EmailVerifications.user eq user }
             user.value
         }

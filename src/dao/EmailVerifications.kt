@@ -9,6 +9,11 @@ object EmailVerifications : Table("emailverifications") {
     val user = reference("user", Users, onDelete = ReferenceOption.CASCADE).index()
     /** Epoch ms. */
     val expiresAt = long("expires_at")
+    /**
+     * bcrypt hash of the password chosen at the sign-up that sent this link, applied when it is
+     * opened; null for links resent at login (the password is already the account's).
+     */
+    val passwordHash = varchar("password_hash", 64).nullable()
 
     override val primaryKey = PrimaryKey(tokenHash)
 }

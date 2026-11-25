@@ -9,6 +9,9 @@ import com.ass.dao.normalizeEmail
 import com.ass.dao.userNameValid
 import com.ass.db.Db
 import com.ass.dao.fetchUserById
+import com.ass.dao.hashPassword
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.ass.model.User
 import com.ass.signup.CaptchaVerifier
 import com.ass.signup.EmailVerification
@@ -101,8 +104,12 @@ fun Route.register(db: Db, rateLimited: Boolean, protection: SignupProtection) {
             val existing = fetchUser(db, email)
             if (existing != null) {
                 if (verification == null) return@post call.respond(HttpStatusCode.Conflict, "User with the following login is already registered")
-                // Same answer as a new account; an unverified one gets a fresh link
-                if (!existing.emailVerified) call.application.launch { sendQuietly(call.application, verification, existing) }
+                // Same answer as a new account. An unverified one gets a fresh link that sets this
+                // sign-up's password: someone who registered the address first can't keep theirs
+                if (!existing.emailVerified) {
+                    val hash = withContext(Dispatchers.Default) { hashPassword(password) }
+                    call.application.launch { sendQuietly(call.application, verification, existing, hash) }
+                }
                 return@post call.respond(HttpStatusCode.Created, CHECK_EMAIL)
             }
             if (!guard.takeSignup()) {
@@ -158,8 +165,8 @@ fun Route.register(db: Db, rateLimited: Boolean, protection: SignupProtection) {
     }
 }
 
-internal suspend fun sendQuietly(app: Application, verification: EmailVerification, user: User) {
-    try { verification.sendLink(user) } catch (e: Exception) { app.log.error("Verification email failed", e) }
+internal suspend fun sendQuietly(app: Application, verification: EmailVerification, user: User, passwordHash: String? = null) {
+    try { verification.sendLink(user, passwordHash) } catch (e: Exception) { app.log.error("Verification email failed", e) }
 }
 
 const val CHECK_EMAIL = "Check your email"
