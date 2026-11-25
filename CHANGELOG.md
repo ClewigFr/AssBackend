@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed
+- `GET /login` answers `200 "Not logged"` instead of `401` without a valid session: it's the dashboard's startup check, not an error (no 4xx on every visit). The dashboard only reads the body.
+
 ### Added
 - `GET /versions`, public: the latest release of the Android and iOS libraries (`{"android","ios"}`), fetched from GitHub at start and every hour, the last known one kept when GitHub fails. `VERSIONS_REFRESH=false` turns it off.
 - Sharing applications with other accounts, by email, with a role: `read` (pages and stats) or `manage` (also pages and view deletion). Deleting the application and sharing it stay with the owner.

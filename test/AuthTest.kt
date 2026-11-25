@@ -35,6 +35,15 @@ class AuthTest {
     }
 
     @Test
+    fun sessionCheckIsNeverAnError() = withServer {
+        val anonymous = call(HttpMethod.Get, "/login")
+        assertEquals(HttpStatusCode.OK, anonymous.status)
+        assertEquals("Not logged", anonymous.bodyAsText())
+        val logged = call(HttpMethod.Get, "/login", cookie = registerAndLogin("a@x.io"))
+        assertEquals("Logged", logged.bodyAsText())
+    }
+
+    @Test
     fun statsNeedAValidSession() = withServer {
         assertEquals(HttpStatusCode.Unauthorized, call(HttpMethod.Get, "/apps").status)
         val cookie = registerAndLogin("a@x.io")

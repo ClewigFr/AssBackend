@@ -28,7 +28,8 @@ import io.ktor.server.sessions.sessions
  */
 fun Route.login(db: Db, rateLimited: Boolean, verification: EmailVerification? = null) {
     /**
-     * A GET request to the [Login], would respond with the login page
+     * GET /login tells the dashboard whether its session cookie is valid: "Logged" or "Not logged",
+     * both with 200, since not being logged in is an answer here, not an error (no 4xx on every visit).
      */
     route("/login") {
         get {
@@ -37,7 +38,7 @@ fun Route.login(db: Db, rateLimited: Boolean, verification: EmailVerification? =
             if (user != null) {
                 call.respond("Logged")
             } else {
-                call.respond(HttpStatusCode.Unauthorized, "Not logged")
+                call.respond("Not logged")
             }
         }
 
