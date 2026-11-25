@@ -151,3 +151,7 @@ data class DeletedOut(val deleted: Long)
 /** Public limits of the service (GET /limits); 0 means no limit, or everything kept for retentionDays. */
 @Serializable
 data class LimitsOut(val maxApps: Int, val maxPagesPerApp: Int, val maxMonthlyViews: Long, val retentionDays: Int)
+
+/** Latest released versions of the libraries (GET /versions); null while unknown. */
+@Serializable
+data class VersionsOut(val android: String? = null, val ios: String? = null)

@@ -20,6 +20,9 @@ import com.ass.account.Quotas
 import com.ass.account.AccountMails
 import com.ass.account.account
 import com.ass.account.limits
+import com.ass.versions.GitHubReleases
+import com.ass.versions.LibraryVersions
+import com.ass.versions.versions
 import com.ass.account.mailerFromConfig
 import com.ass.account.passwordReset
 import com.ass.dao.AccountNotices
@@ -174,6 +177,15 @@ fun Application.module() {
             delay(1.hours)
         }
     }
+    // Latest library versions for the presentation page, from GitHub at start and every hour
+    val libraryVersions = LibraryVersions(GitHubReleases())
+    attributes.put(LibraryVersionsKey, libraryVersions)
+    if (configBool("ktor.versions.refresh", true)) launch {
+        while (true) {
+            try { libraryVersions.refresh() } catch (e: Exception) { log.warn("Library versions refresh failed", e) }
+            delay(1.hours)
+        }
+    }
     installModule()
     routing {
         root()
@@ -183,6 +195,7 @@ fun Application.module() {
         apps(db, pageCache, statsService, quotas)
         account(db, quotas, pageCache, statsService, rateLimited = authRateLimit > 0)
         limits(quotas, retention.days)
+        versions(libraryVersions)
         passwordReset(db, mailer, dashboardUrl, rateLimited = authRateLimit > 0)
         login(db, rateLimited = authRateLimit > 0, verification)
         register(db, rateLimited = authRateLimit > 0, signup)
@@ -196,6 +209,7 @@ val VerificationKey = AttributeKey<EmailVerification>("EmailVerification")
 val DbKey = AttributeKey<com.ass.db.Db>("Db")
 val AccountMailsKey = AttributeKey<com.ass.account.AccountMails>("AccountMails")
 val MailerKey = AttributeKey<com.ass.mail.Mailer>("Mailer")
+val LibraryVersionsKey = AttributeKey<LibraryVersions>("LibraryVersions")
 
 /** The ingestor of a running application (tests use it to wait for buffered writes). */
 val IngestorKey = AttributeKey<ViewIngestor>("ViewIngestor")

@@ -37,6 +37,8 @@ fun withServer(vararg extraConfig: Pair<String, String>, test: suspend Applicati
                 "ktor.security.signup_min_seconds" to "0",
                 // Many tests post bodies without "app"; LegacyViewsTest turns it off
                 "ktor.security.legacy_views" to "true",
+                // No call to GitHub: VersionsTest drives the refresh with a fake fetcher
+                "ktor.versions.refresh" to "false",
                 *extraConfig
             )
         }
