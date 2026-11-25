@@ -8,6 +8,8 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.ApplicationTestBuilder
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
+import org.jetbrains.exposed.v1.jdbc.update
+import org.jetbrains.exposed.v1.core.eq
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -48,6 +50,13 @@ class AccountMailsTest {
         sendViews(app, page, 3)
         sentMails().clear()
         val nextMonth = monthStart() + 32L * 24 * 3600 * 1000
+        // Created this month: no summary of a month the account only partly existed in
+        call(HttpMethod.Patch, "/account", alice, json = """{"monthlyReport":true}""")
+        accountMails().run(nextMonth)
+        assertEquals(0, sentMails().size)
+        call(HttpMethod.Patch, "/account", alice, json = """{"monthlyReport":false}""")
+        // From here on, an account older than the month
+        database().query { com.ass.dao.Users.update({ com.ass.dao.Users.email eq "a@x.io" }) { it[createdAt] = 0 } }
 
         accountMails().run(nextMonth)
         assertEquals(0, sentMails().size)

@@ -11,6 +11,7 @@ import com.ass.dao.Apps
 import com.ass.dao.Pages
 import com.ass.dao.PagesDaily
 import com.ass.dao.PagesViews
+import com.ass.dao.PasswordResets
 import com.ass.dao.Users
 import com.ass.dao.checkPassword
 import com.ass.dao.fetchUserById
@@ -100,6 +101,8 @@ fun Route.account(db: Db, quotas: Quotas, pageCache: PageCache, statsService: St
                         it[passwordHash] = hash
                         it[sessionVersion] = sessionVersion + 1
                     }
+                    // A reset link sent before the change must not undo it
+                    PasswordResets.deleteWhere { PasswordResets.user eq user.id }
                 }
                 // Other devices are signed out; this one gets a session with the new version
                 fetchUserById(db, user.id.value)?.let { call.startSession(it) }

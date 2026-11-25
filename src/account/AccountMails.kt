@@ -83,7 +83,7 @@ class AccountMails(private val db: Db, private val mailer: Mailer, private val q
     private suspend fun summaryMail(account: Account, month: Long) {
         val from = monthStart(month - 1)
         // Only for months the account fully existed in
-        if (account.createdAt >= month || !claim(account.id, from, listOf("summary"))) return
+        if (account.createdAt >= from || !claim(account.id, from, listOf("summary"))) return
         val before = monthStart(from - 1)
         val apps = db.query {
             Apps.selectAll().where { Apps.owner eq account.id }.orderBy(Apps.name).map { it[Apps.id].value to it[Apps.name] }

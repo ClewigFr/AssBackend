@@ -8,6 +8,8 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.ApplicationTestBuilder
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.jdbc.update
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
@@ -59,6 +61,17 @@ class AppMembersTest {
         assertEquals(HttpStatusCode.BadRequest, share(alice, app, "", "read").status)
         assertEquals(HttpStatusCode.Conflict, share(alice, app, "alice@x.io", "read").status)
         assertEquals(0, members(alice, app).size)
+    }
+
+    @Test
+    fun unverifiedAccountsCantBeSharedWith() = withServer {
+        val alice = registerAndLogin("alice@x.io")
+        registerAndLogin("bob@x.io")
+        val app = createApp(alice)
+        database().query {
+            com.ass.dao.Users.update({ com.ass.dao.Users.email eq "bob@x.io" }) { it[emailVerified] = false }
+        }
+        assertEquals(HttpStatusCode.NotFound, share(alice, app, "bob@x.io", "read").status)
     }
 
     @Test

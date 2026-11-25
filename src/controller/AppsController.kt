@@ -60,6 +60,8 @@ import java.util.UUID
 
 const val MAX_NAME_LENGTH = 255
 const val MAX_PAGES_PER_BATCH = 1000
+/** Accounts an application can be shared with. */
+const val MAX_MEMBERS_PER_APP = 50
 
 /**
  * Applications and their pages, all scoped to the logged-in user:
@@ -85,7 +87,7 @@ const val MAX_PAGES_PER_BATCH = 1000
  * 404, exactly like a missing one; one with too low a role answers 403. Going over [Quotas]
  * (applications per account, pages per application) answers 403 and creates nothing.
  */
-fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService, quotas: Quotas = Quotas()) {
+fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService, quotas: Quotas = Quotas(), rateLimited: Boolean = false) {
     route("/apps") {
         get {
             val user = requireUser(db) ?: return@get
@@ -263,8 +265,10 @@ fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService, quotas:
                     call.respond(MembersOut(db.query { members(app.id) }))
                 }
 
-                // Shares with an existing account, or changes its role when already a member
-                post {
+                // Shares with an existing account, or changes its role when already a member.
+                // The 404 for an unknown address tells whether an account exists: limited per client
+                // IP like /login, and only verified accounts count, so it can't be used to sweep addresses.
+                limitedTo(rateLimited) { post {
                     val user = requireUser(db) ?: return@post
                     val app = appWithRole(db, user, AppRole.OWNER) ?: return@post
                     val body = call.receiveNullable<MemberIn>()
@@ -273,7 +277,7 @@ fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService, quotas:
                     if (email.isNullOrEmpty() || role == null) {
                         return@post call.respond(HttpStatusCode.BadRequest, "email and role (read|manage) are required")
                     }
-                    val member = fetchUser(db, email)
+                    val member = fetchUser(db, email)?.takeIf { it.emailVerified }
                         ?: return@post call.respond(HttpStatusCode.NotFound, "no account with this email")
                     if (member.id == user.id) {
                         return@post call.respond(HttpStatusCode.Conflict, "the owner already has every right")
@@ -282,15 +286,18 @@ fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService, quotas:
                         val updated = AppMembers.update({ (AppMembers.app eq app.id) and (AppMembers.user eq member.id) }) {
                             it[AppMembers.role] = role.wire
                         }
+                        if (updated == 0 && AppMembers.select(AppMembers.user).where { AppMembers.app eq app.id }.count() >= MAX_MEMBERS_PER_APP) {
+                            return@query null
+                        }
                         if (updated == 0) AppMembers.insert {
                             it[AppMembers.app] = app.id
                             it[AppMembers.user] = member.id
                             it[AppMembers.role] = role.wire
                         }
                         members(app.id)
-                    }
+                    } ?: return@post call.respond(HttpStatusCode.Forbidden, "at most $MAX_MEMBERS_PER_APP members per application")
                     call.respond(MembersOut(out))
-                }
+                } }
 
                 // The owner removes anyone; a member can also leave by removing themself ("me" or their id)
                 delete("/{userId}") {

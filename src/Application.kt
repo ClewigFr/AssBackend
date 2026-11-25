@@ -192,7 +192,7 @@ fun Application.module() {
         health(db)
         pageViews(pageCache, ingestor, ViewBudget(configInt("ktor.performance.views_per_minute", 20_000)), guard, rateLimited = viewsRateLimit > 0,
             legacyViews = configBool("ktor.security.legacy_views", false))
-        apps(db, pageCache, statsService, quotas)
+        apps(db, pageCache, statsService, quotas, rateLimited = authRateLimit > 0)
         account(db, quotas, pageCache, statsService, rateLimited = authRateLimit > 0)
         limits(quotas, retention.days)
         versions(libraryVersions)

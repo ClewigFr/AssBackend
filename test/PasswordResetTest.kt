@@ -66,4 +66,15 @@ class PasswordResetTest {
         assertEquals(HttpStatusCode.BadRequest,
             call(HttpMethod.Post, "/password/reset", json = """{"token":"$first","new":"newsecret2"}""").status)
     }
+
+    @Test
+    fun changingThePasswordCancelsResetLinks() = withServer {
+        val session = registerAndLogin("a@x.io", "secret123")
+        forgot("a@x.io")
+        val token = lastToken()
+        assertEquals(HttpStatusCode.NoContent,
+            call(HttpMethod.Post, "/account/password", session, json = """{"current":"secret123","new":"changed12"}""").status)
+        assertEquals(HttpStatusCode.BadRequest,
+            call(HttpMethod.Post, "/password/reset", json = """{"token":"$token","new":"newsecret1"}""").status)
+    }
 }
