@@ -24,7 +24,7 @@ suspend fun revokeSessions(db: Db, id: Int) = db.query {
 }
 
 /**
- * Return the user if [password] matches, upgrading a legacy hash to bcrypt on success.
+ * Return the user if [password] matches.
  * bcrypt runs on the CPU dispatcher, not while holding a database connection.
  */
 suspend fun verifyUser(db: Db, email: String, password: String): User? {
@@ -33,12 +33,7 @@ suspend fun verifyUser(db: Db, email: String, password: String): User? {
         // Same bcrypt cost when the email is unknown, so timing doesn't reveal which accounts exist
         checkPassword(password, user?.passwordHash ?: DUMMY_HASH)
     }
-    if (user == null || !ok) return null
-    if (!isBcryptHash(user.passwordHash)) {
-        val upgraded = withContext(Dispatchers.Default) { hashPassword(password) }
-        db.query { Users.update({ Users.id eq user.id }) { it[passwordHash] = upgraded } }
-    }
-    return user
+    return user?.takeIf { ok }
 }
 
 private val DUMMY_HASH: String by lazy { hashPassword("not-a-real-password") }

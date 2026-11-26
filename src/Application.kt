@@ -237,6 +237,7 @@ fun Application.installModule() {
     val dev = isDev
     val signKey = sessionSignKey
     val origins = corsOrigins
+    val trustProxy = configBool("ktor.security.trust_proxy", !dev)
 
     install(Sessions) {
         cookie<ASSSession>("MY_SESSION") {
@@ -294,10 +295,11 @@ fun Application.installModule() {
     install(BodyLimit)
     install(originCheck(origins))
 
-    if (!dev) {
+    if (trustProxy) {
         // Behind a proxy (Cloudflare Tunnel), the real client IP is the last
         // X-Forwarded-For entry: proxies append it after whatever the client sent. It's only
-        // used as the in-memory rate-limit key, never stored or logged.
+        // used as the in-memory rate-limit key, never stored or logged. Without a proxy in front
+        // (TRUST_PROXY=false) the header is ignored: anyone could fake it to dodge the limits.
         install(XForwardedHeaders) { useLastProxy() }
     }
 

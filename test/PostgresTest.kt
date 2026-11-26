@@ -10,8 +10,6 @@ import kotlinx.serialization.json.Json
 import org.junit.AfterClass
 import java.sql.DriverManager
 import java.util.UUID
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -42,11 +40,6 @@ class PostgresTest {
         fun <T> query(url: String, sql: String, read: (java.sql.ResultSet) -> T): T =
             DriverManager.getConnection(url).use { c -> c.createStatement().executeQuery(sql).use(read) }
 
-        private fun legacyHash(password: String): String {
-            val mac = Mac.getInstance("HmacSHA1")
-            mac.init(SecretKeySpec(io.ktor.util.hex("6819b57a326945c1968f45236589"), "HmacSHA1"))
-            return io.ktor.util.hex(mac.doFinal(password.toByteArray()))
-        }
     }
 
     @Test
@@ -98,7 +91,7 @@ class PostgresTest {
         val now = System.currentTimeMillis()
         sql(url, javaClass.getResource("/legacy-schema.sql")!!.readText())
         sql(url,
-            "INSERT INTO users(email, display_name, password_hash) VALUES ('alice@x.io', 'A', '${legacyHash("alicepass1")}')",
+            "INSERT INTO users(email, display_name, password_hash) VALUES ('alice@x.io', 'A', '${com.ass.dao.hashPassword("alicepass1")}')",
             "INSERT INTO pages(id, name, owner) VALUES " +
                 "('aaaaaaaa-0000-4000-8000-000000000001', 'home', 1), " +
                 "('cccccccc-0000-4000-8000-000000000001', 'orphan', NULL)",
@@ -108,7 +101,7 @@ class PostgresTest {
         )
 
         withServer("ktor.deployment.database_url" to url) {
-            // The legacy password still works (and is upgraded to bcrypt)
+            // Accounts from the legacy schema still log in
             val alice = sessionCookie(postForm("/login", "userId" to "alice@x.io", "password" to "alicepass1"))!!
             val app = Json.decodeFromString<AppsOut>(call(HttpMethod.Get, "/apps", alice).bodyAsText()).apps.single()
             assertEquals("Application par défaut", app.name)

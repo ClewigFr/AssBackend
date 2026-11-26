@@ -52,6 +52,8 @@ services:
       TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
       # Accept views without "app" (Android library before AssConfig)
       LEGACY_VIEWS: ${LEGACY_VIEWS:-false}
+      # Behind the Cloudflare tunnel: the client IP is the last X-Forwarded-For entry
+      TRUST_PROXY: ${TRUST_PROXY:-true}
       RETENTION_DAYS: ${RETENTION_DAYS:-90}
       MAX_APPS: ${MAX_APPS:-5}
       MAX_PAGES_PER_APP: ${MAX_PAGES_PER_APP:-30}

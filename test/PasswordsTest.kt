@@ -21,13 +21,10 @@ class PasswordsTest {
     }
 
     @Test
-    fun legacyHmacHashesStillVerify() {
+    fun legacyHmacHashesAreRefused() {
         // HMAC-SHA1 of "secret123" with the former hardcoded key
-        val mac = javax.crypto.Mac.getInstance("HmacSHA1")
-        mac.init(javax.crypto.spec.SecretKeySpec(io.ktor.util.hex("6819b57a326945c1968f45236589"), "HmacSHA1"))
-        val legacy = io.ktor.util.hex(mac.doFinal("secret123".toByteArray()))
+        val legacy = "0f3a1c6f9a0c2b4d5e6f708192a3b4c5d6e7f809"
         assertFalse(isBcryptHash(legacy))
-        assertTrue(checkPassword("secret123", legacy))
-        assertFalse(checkPassword("wrong", legacy))
+        assertFalse(checkPassword("secret123", legacy))
     }
 }

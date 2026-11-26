@@ -29,3 +29,6 @@ build/*
 local.properties
 .kotlin/
 .DS_Store
+
+# Private notes (business plans), never published
+/docs/

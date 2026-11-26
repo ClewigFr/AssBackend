@@ -75,6 +75,25 @@ class LoadProtectionTest {
         assertEquals(HttpStatusCode.BadRequest, post("9.9.9.9, 2.2.2.2"))
     }
 
+    /** Without a proxy in front (TRUST_PROXY=false), a faked X-Forwarded-For doesn't reset the limit. */
+    @Test
+    fun forwardedForIsIgnoredWithoutTrustedProxy() = withServer(
+        "ktor.environment" to "prod",
+        "ktor.security.session_sign_key" to "00".repeat(32),
+        "ktor.security.trust_proxy" to "false",
+        "ktor.performance.views_rate_limit" to "2"
+    ) {
+        val body = """{"pageViews":[${viewJson(java.util.UUID.randomUUID().toString())}]}"""
+        suspend fun post(forwardedFor: String) = client.post("/views") {
+            header("X-Forwarded-For", forwardedFor)
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.status
+        assertEquals(HttpStatusCode.BadRequest, post("1.1.1.1"))
+        assertEquals(HttpStatusCode.BadRequest, post("2.2.2.2"))
+        assertEquals(HttpStatusCode.TooManyRequests, post("3.3.3.3"))
+    }
+
     @Test
     fun largeResponsesAreCompressed() = withServer {
         val alice = registerAndLogin("a@x.io")

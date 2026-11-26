@@ -1,11 +1,8 @@
 package com.ass.dao
 
-import io.ktor.util.hex
 import org.jetbrains.exposed.v1.core.notLike
 import org.jetbrains.exposed.v1.jdbc.select
 import org.mindrot.jbcrypt.BCrypt
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
 
 /**
  * Hash a password with bcrypt (salted, slow by design).
@@ -15,34 +12,28 @@ fun hashPassword(password: String): String = BCrypt.hashpw(password, BCrypt.gens
 fun isBcryptHash(hash: String) = hash.startsWith("$2")
 
 /**
- * Check a password against a stored hash. Supports the legacy HMAC-SHA1 hashes so existing
- * users can still log in; [verifyUser] upgrades them to bcrypt on their next login.
+ * Check a password against a stored bcrypt hash. Anything else (the former HMAC-SHA1 hashes,
+ * whose key was in the source) never matches: those accounts get back in with a password reset.
  */
-fun checkPassword(password: String, storedHash: String): Boolean =
-    if (isBcryptHash(storedHash)) BCrypt.checkpw(password, storedHash)
-    else java.security.MessageDigest.isEqual(
-        legacyHash(password).toByteArray(), storedHash.toByteArray()
-    )
-
-/** Legacy scheme, kept only to verify passwords stored before bcrypt. Never use it for new hashes. */
-private val legacyKey = SecretKeySpec(hex("6819b57a326945c1968f45236589"), "HmacSHA1")
-
-private fun legacyHash(password: String): String {
-    val hmac = Mac.getInstance("HmacSHA1")
-    hmac.init(legacyKey)
-    return hex(hmac.doFinal(password.toByteArray(Charsets.UTF_8)))
+fun checkPassword(password: String, storedHash: String): Boolean {
+    if (isBcryptHash(storedHash)) return BCrypt.checkpw(password, storedHash)
+    // Same cost as a real check, so timing doesn't tell these accounts apart
+    BCrypt.checkpw(password, DUMMY_HASH)
+    return false
 }
 
+private val DUMMY_HASH: String by lazy { hashPassword("not-a-real-password") }
+
 /**
- * Accounts still on the legacy HMAC-SHA1 hash (unsalted, key in the source) are upgraded at their
- * next login. Logged at start so the admin can see when none are left, or reset the others.
+ * Accounts still on the removed HMAC-SHA1 hash can't log in any more. Logged at start so the
+ * admin can tell them to use "Mot de passe oublié", or delete the accounts.
  */
 fun warnAboutLegacyHashes(db: com.ass.db.Db) {
     val count = org.jetbrains.exposed.v1.jdbc.transactions.transaction(db.database) {
         Users.select(Users.id).where { Users.passwordHash notLike "\$2%" }.count()
     }
     if (count > 0) org.slf4j.LoggerFactory.getLogger("Passwords").warn(
-        "$count account(s) still use the legacy password hash: they are upgraded at their next login. " +
-            "To get rid of them, reset their password (or delete the accounts)."
+        "$count account(s) still have a legacy password hash, which is no longer accepted: " +
+            "they must reset their password (\"forgot password\"), or be deleted."
     )
 }
