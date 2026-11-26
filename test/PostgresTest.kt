@@ -71,6 +71,11 @@ class PostgresTest {
         assertEquals(0.5, week.current.bounceRate)
         assertEquals(listOf("home" to 2L, "cart" to 1L), week.pages.map { it.name to it.views })
 
+        val flows = Json.decodeFromString<com.ass.model.FlowStats>(call(HttpMethod.Get, "/apps/$app/flows?period=week&tz=60", alice).bodyAsText())
+        assertEquals(2, flows.sessions)
+        assertEquals(1, flows.hiddenSessions)
+        assertEquals(2, flows.entries.sumOf { it.sessions })
+
         // Retention: views older than 90 days become daily counts, twice on the same day (insert, then update)
         val old = 120L * 24 * 60 * 60 * 1000
         repeat(2) {

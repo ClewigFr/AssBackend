@@ -29,6 +29,7 @@ import com.ass.stats.DAY_MS
 import com.ass.stats.MAX_PERIOD_OFFSET
 import com.ass.stats.MAX_TZ_OFFSET_MS
 import com.ass.stats.Period
+import com.ass.stats.FlowService
 import com.ass.stats.StatsService
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receiveNullable
@@ -87,7 +88,7 @@ const val MAX_MEMBERS_PER_APP = 50
  * 404, exactly like a missing one; one with too low a role answers 403. Going over [Quotas]
  * (applications per account, pages per application) answers 403 and creates nothing.
  */
-fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService, quotas: Quotas = Quotas(), rateLimited: Boolean = false) {
+fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService, quotas: Quotas = Quotas(), rateLimited: Boolean = false, flowService: FlowService = FlowService(db)) {
     route("/apps") {
         get {
             val user = requireUser(db) ?: return@get
@@ -192,6 +193,20 @@ fun Route.apps(db: Db, pageCache: PageCache, statsService: StatsService, quotas:
                     id
                 }
                 call.respond(statsService.compute(app.id, period, offset, tzMs, page))
+            }
+
+            // Screen-to-screen paths, as aggregates only (see FlowService)
+            get("/flows") {
+                val user = requireUser(db) ?: return@get
+                val app = appWithRole(db, user, AppRole.READ) ?: return@get
+                val query = call.request.queryParameters
+                val tzMs = (query["tz"]?.toLongOrNull() ?: 0) * 60_000
+                val period = Period.parse(query["period"])
+                val offset = query["offset"]?.toIntOrNull() ?: 0
+                if (tzMs !in -MAX_TZ_OFFSET_MS..MAX_TZ_OFFSET_MS || period == null || offset !in -MAX_PERIOD_OFFSET..0) {
+                    return@get call.respond(HttpStatusCode.BadRequest, "invalid tz, period (day|week|month|year) or offset (<= 0)")
+                }
+                call.respond(flowService.compute(app.id, period, offset, tzMs))
             }
 
             post("/pages") {

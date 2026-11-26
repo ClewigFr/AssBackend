@@ -155,3 +155,29 @@ data class LimitsOut(val maxApps: Int, val maxPagesPerApp: Int, val maxMonthlyVi
 /** Latest released versions of the libraries (GET /versions); null while unknown. */
 @Serializable
 data class VersionsOut(val android: String? = null, val ios: String? = null)
+
+/** Sessions (and views) where [page] was the first, or the last, screen. */
+@Serializable
+data class FlowPage(val page: JsonUUID, val sessions: Long)
+
+/** Moves from screen [from] to screen [to] (next view of the same session); [avgMs] is the mean time spent on [from]. */
+@Serializable
+data class FlowTransition(val from: JsonUUID, val to: JsonUUID, val sessions: Long, val count: Long, val avgMs: Long)
+
+/**
+ * Screen paths of one application over [from, to), only as aggregates: transitions seen in fewer
+ * than [minSessions] sessions are not listed, only summed in [hiddenSessions] (session-transition pairs).
+ */
+@Serializable
+data class FlowStats(
+    val from: Long,
+    val to: Long,
+    val sessions: Long,
+    val minSessions: Int,
+    val entries: List<FlowPage>,
+    val exits: List<FlowPage>,
+    val transitions: List<FlowTransition>,
+    val hiddenSessions: Long,
+    /** Paths need raw views: before this instant there are none (null if everything is kept). */
+    val detailFrom: Long? = null
+)

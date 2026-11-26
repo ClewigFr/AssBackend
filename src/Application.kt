@@ -35,6 +35,7 @@ import com.ass.dao.ViewsDropped
 import com.ass.routing.health
 import com.ass.routing.root
 import com.ass.retention.Retention
+import com.ass.stats.FlowService
 import com.ass.stats.StatsService
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -115,7 +116,8 @@ fun Application.module() {
 
     val retention = Retention(db, days = configInt("ktor.performance.retention_days", 90))
     val statsService = StatsService(db, cacheMs = configInt("ktor.performance.stats_cache_ms", 5_000).toLong(), retention = retention)
-    retention.onChange = statsService::invalidateAll
+    val flowService = FlowService(db, cacheMs = configInt("ktor.performance.stats_cache_ms", 5_000).toLong(), retention = retention)
+    retention.onChange = { statsService.invalidateAll(); flowService.invalidateAll() }
     attributes.put(RetentionKey, retention)
     // Roll up old views shortly after start, then every 6 hours
     if (retention.days > 0) launch {
@@ -192,7 +194,7 @@ fun Application.module() {
         health(db)
         pageViews(pageCache, ingestor, ViewBudget(configInt("ktor.performance.views_per_minute", 20_000)), guard, rateLimited = viewsRateLimit > 0,
             legacyViews = configBool("ktor.security.legacy_views", false))
-        apps(db, pageCache, statsService, quotas, rateLimited = authRateLimit > 0)
+        apps(db, pageCache, statsService, quotas, flowService = flowService, rateLimited = authRateLimit > 0)
         account(db, quotas, pageCache, statsService, rateLimited = authRateLimit > 0)
         limits(quotas, retention.days)
         versions(libraryVersions)
